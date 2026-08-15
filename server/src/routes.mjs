@@ -1,5 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { WEB_DIR, SERVER_DIR } from './config.mjs';
 import config, { publicConfig, saveConfigPatch } from './config.mjs';
 import { TYPES, getAllTypes } from './types.mjs';
@@ -118,6 +119,19 @@ async function routeImpl(req, res) {
         return sendJSON(res, 200, { exists: true, updatedAt: st.mtime.toISOString(), size: st.size });
       } catch {
         return sendJSON(res, 200, { exists: false, updatedAt: null });
+      }
+    }
+
+    // 重启 QQ/NapCat（命令在 config.bot.restartCommand，固定命令，不可注入）
+    if (req.method === 'POST' && p === '/api/bot/restart') {
+      const cmd = config.bot?.restartCommand;
+      if (!cmd) return sendJSON(res, 400, { error: '未配置 bot.restartCommand（网页设置或 config.json）' });
+      try {
+        const child = spawn(cmd, { shell: true, detached: true, stdio: 'ignore' });
+        child.unref();
+        return sendJSON(res, 200, { ok: true, msg: '重启命令已发送' });
+      } catch (err) {
+        return sendJSON(res, 500, { error: `重启失败：${err.message}` });
       }
     }
 

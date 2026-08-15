@@ -44,6 +44,7 @@ const WRITABLE_SECTIONS = {
   ai: ['enabled', 'model', 'maxTokens', 'maxRequestsPerDay', 'historyTurns', 'costNotifyQQ', 'apiKey'],
   notify: ['qqUserId', 'groupId'],
   scheduler: ['intervalSeconds'],
+  bot: ['restartCommand', 'qrcodePath'],
 };
 
 export function publicConfig() {
@@ -59,6 +60,7 @@ export function publicConfig() {
     },
     notify: { qqUserId: config.notify?.qqUserId, groupId: config.notify?.groupId || '' },
     scheduler: { intervalSeconds: config.scheduler?.intervalSeconds },
+    bot: { restartCommand: config.bot?.restartCommand || '', qrcodePath: config.bot?.qrcodePath || '' },
   };
 }
 

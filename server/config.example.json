@@ -25,7 +25,8 @@
     "allowedUsers": [],
     "adminQqIds": [],
     "groupAITrigger": "any",
-    "qrcodePath": ""
+    "qrcodePath": "",
+    "restartCommand": ""
   },
   "ai": {
     "enabled": false,

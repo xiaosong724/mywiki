@@ -418,6 +418,9 @@ async function renderSettings() {
         <label>DeepSeek API Key（留空保持不变）
           <input id="sApiKey" type="password" autocomplete="off" placeholder="${cfg.ai.hasApiKey ? '已设置，留空不变' : '填写 key'}">
         </label>
+        <label>重启 QQ/NapCat 命令（留空=网页不显示重启按钮）
+          <input id="sRestartCmd" value="${esc(cfg.bot.restartCommand || '')}" placeholder="如 powershell -File C:\my-wiki\scripts\restart-napcat.ps1">
+        </label>
         <div class="actions">
           <button type="submit" class="btn-primary">保存设置</button>
         </div>
@@ -442,6 +445,7 @@ async function renderSettings() {
              style="width:200px;height:200px;object-fit:contain;background:#fff;padding:8px;border:1px solid #ddd;border-radius:8px;">
         <div class="actions" style="justify-content:center;">
           <button type="button" class="btn-primary" id="botQrRefresh">🔄 刷新二维码</button>
+          <button type="button" class="btn-danger" id="botQrRestart">♻️ 重启 QQ/NapCat</button>
         </div>
         <div class="meta" id="botQrInfo"></div>
       </div>
@@ -463,6 +467,15 @@ async function renderSettings() {
   };
   const qrBtn = $('#botQrRefresh');
   if (qrBtn) qrBtn.onclick = refreshQr;
+  const restartBtn = $('#botQrRestart');
+  if (restartBtn) restartBtn.onclick = async () => {
+    if (!confirm('确定重启 QQ/NapCat？重启后若需重新登录，稍等片刻点「刷新二维码」扫码。')) return;
+    try {
+      await api('/api/bot/restart', { method: 'POST' });
+      toast('重启命令已发送，等待 QQ 重新登录…');
+      setTimeout(refreshQr, 10000);
+    } catch (err) { toast('重启失败：' + err.message); }
+  };
   refreshQr();
 }
 
@@ -496,6 +509,7 @@ async function submitSettings(e) {
       ...(apiKey ? { apiKey } : {}),
     },
     notify: { qqUserId: $('#sNotifyQQ').value.trim(), groupId: $('#sNotifyGroup').value.trim() },
+    bot: { restartCommand: $('#sRestartCmd').value.trim(), qrcodePath: cfg.bot?.qrcodePath || '' },
     scheduler: { intervalSeconds: Number($('#sScheduler').value) },
   };
   try {
