@@ -445,7 +445,7 @@ async function renderSettings() {
              style="width:200px;height:200px;object-fit:contain;background:#fff;padding:8px;border:1px solid #ddd;border-radius:8px;">
         <div class="actions" style="justify-content:center;">
           <button type="button" class="btn-primary" id="botQrRefresh">🔄 刷新二维码</button>
-          <button type="button" class="btn-danger" id="botQrRestart">♻️ 重启 QQ/NapCat</button>
+          ${cfg.bot.restartCommand ? '<button type="button" class="btn-danger" id="botQrRestart">♻️ 重启 QQ/NapCat</button>' : ''}
         </div>
         <div class="meta" id="botQrInfo"></div>
       </div>
