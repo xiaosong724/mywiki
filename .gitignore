@@ -1,0 +1,15 @@
+# 运行时数据与配置（含密钥），不入库
+server/data/
+server/config.json
+server/usage.json
+
+# 依赖
+node_modules/
+
+# 本地 NapCat 运行包（整个目录可从 C:\mc\NapCat.Shell 重新复制）
+NapCat.Shell/
+
+# 系统/编辑器
+*.log
+.DS_Store
+Thumbs.db

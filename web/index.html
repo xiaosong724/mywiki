@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>我的知识库</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">📚 我的知识库</div>
+    <div class="search">
+      <input id="searchInput" type="text" placeholder="搜索条目…" autocomplete="off">
+      <button id="searchBtn">搜索</button>
+      <button id="refreshBtn" title="刷新">⟳</button>
+    </div>
+  </header>
+
+  <nav id="typeNav"></nav>
+
+  <main id="main">
+    <div id="view"></div>
+  </main>
+
+  <button id="fab" title="新建条目">＋</button>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <span id="modalTitle">新建条目</span>
+        <button class="close" id="modalClose">×</button>
+      </div>
+      <form id="entryForm">
+        <label>类型
+          <select id="fType"></select>
+        </label>
+        <label>标题
+          <input id="fTitle" required placeholder="标题">
+        </label>
+        <div id="fFields"></div>
+        <label>位置（可选）
+          <input id="fLocation" placeholder="放在哪里">
+        </label>
+        <label>归属人（可选）
+          <select id="fOwner"><option value="">无</option></select>
+        </label>
+        <label class="inline-check"><input type="checkbox" id="fPrivate"> 私密（仅网页和归属人本人私聊可见）</label>
+        <label>内容 / 备注
+          <textarea id="fContent" rows="3"></textarea>
+        </label>
+        <label>标签（逗号分隔）
+          <input id="fTags" placeholder="tag1,tag2">
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="formCancel" class="btn-plain">取消</button>
+          <button type="submit" class="btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="groupModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <span id="groupModalTitle">群组权限</span>
+        <button class="close" id="groupModalClose">×</button>
+      </div>
+      <form id="groupForm">
+        <label>群号
+          <input id="gGroupId" required placeholder="QQ 群号，如 1103784008">
+        </label>
+        <label>备注名称
+          <input id="gGroupName" placeholder="例如：测试群">
+        </label>
+        <label class="inline-check"><input type="checkbox" id="gEnabled"> 启用此群权限</label>
+        <label class="inline-check"><input type="checkbox" id="gMemberPrivate"> 允许群成员私聊机器人（群主始终允许）</label>
+        <div class="section-title">类型触发规则</div>
+        <div id="gTypeRules"></div>
+        <div class="section-title">成员默认权限（未单独配置的成员）</div>
+        <div id="gDefaultRules"></div>
+        <div class="modal-actions">
+          <button type="button" id="groupFormCancel" class="btn-plain">取消</button>
+          <button type="submit" class="btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="memberPermModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <span id="memberPermModalTitle">成员权限</span>
+        <button class="close" id="memberPermModalClose">×</button>
+      </div>
+      <form id="memberPermForm">
+        <label>QQ 号
+          <input id="mpQqId" required placeholder="例如 495538306">
+        </label>
+        <label>群号
+          <input id="mpGroupId" required placeholder="例如 346049634">
+        </label>
+        <div class="section-title">分类权限（查/增/改/删）</div>
+        <div id="mpTypeRules"></div>
+        <div class="modal-actions">
+          <button type="button" id="memberPermFormCancel" class="btn-plain">取消</button>
+          <button type="submit" class="btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

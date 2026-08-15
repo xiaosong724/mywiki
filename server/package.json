@@ -1,0 +1,17 @@
+{
+  "name": "my-wiki-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "个人知识库核心服务：条目/提醒/检索/AI/机器人适配器（零依赖，仅需 Node >= 22.5）",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "start": "node src/main.mjs",
+    "seed": "node src/seed.mjs"
+  },
+  "dependencies": {
+    "lunar-javascript": "^1.7.7"
+  }
+}

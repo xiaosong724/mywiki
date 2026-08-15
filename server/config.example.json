@@ -1,0 +1,52 @@
+{
+  "port": 8000,
+  "host": "0.0.0.0",
+  "dataDir": "data",
+  "token": "",
+  "scheduler": {
+    "intervalSeconds": 30
+  },
+  "backup": {
+    "intervalHours": 24,
+    "retention": 10
+  },
+  "notify": {
+    "qqUserId": "",
+    "groupId": ""
+  },
+  "bot": {
+    "enabled": true,
+    "kind": "onebot11",
+    "host": "127.0.0.1",
+    "port": 4955,
+    "token": "",
+    "selfId": "",
+    "allowedGroups": [],
+    "allowedUsers": [],
+    "adminQqIds": [],
+    "groupAITrigger": "any",
+    "qrcodePath": ""
+  },
+  "ai": {
+    "enabled": false,
+    "baseUrl": "https://api.deepseek.com",
+    "apiKey": "",
+    "model": "deepseek-chat",
+    "maxTokens": 800,
+    "maxRequestsPerDay": 200,
+    "historyTurns": 6,
+    "costNotifyQQ": "",
+    "pricing": {
+      "deepseek-chat": {
+        "inputCacheHitPerMillion": 0.02,
+        "inputPerMillion": 1,
+        "outputPerMillion": 2
+      },
+      "deepseek-reasoner": {
+        "inputCacheHitPerMillion": 0.025,
+        "inputPerMillion": 3,
+        "outputPerMillion": 6
+      }
+    }
+  }
+}
