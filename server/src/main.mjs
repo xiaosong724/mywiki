@@ -49,20 +49,21 @@ if (config.bot?.enabled) {
         console.log(`[bot] 群${gid} 未配置权限或已停用，忽略`);
         return;
       }
-      if (!text.trim().startsWith('/')) {
-        const trigger = matchGroupTrigger(cfg, text);
-        if (trigger) {
-          groupPolicy = { allowedTypes: trigger.allowedTypes, mode: trigger.mode };
-          effectiveText = trigger.query;
-        } else if (looksLikeConfirmation(text)) {
-          // 确认消息（两位码 / 确认XX）：受限群里也必须放行，否则确认码永远无法执行
-          groupPolicy = { allowedTypes: Object.entries(cfg.typeRules || {}).filter(([, r]) => r.mode !== 'off').map(([type]) => type) };
-        } else {
-          console.log(`[bot] 群${gid} 消息未匹配触发规则，忽略`);
-          return;
-        }
-      } else {
+      // 1) 前缀触发优先（/wiki3、/图，兼容无 / 旧格式）
+      const trigger = matchGroupTrigger(cfg, text);
+      if (trigger) {
+        groupPolicy = { allowedTypes: trigger.allowedTypes, mode: trigger.mode };
+        effectiveText = trigger.query;
+      } else if (looksLikeConfirmation(text)) {
+        // 确认消息（两位码 / 确认XX）：受限群里也必须放行，否则确认码永远无法执行
         groupPolicy = { allowedTypes: Object.entries(cfg.typeRules || {}).filter(([, r]) => r.mode !== 'off').map(([type]) => type) };
+      } else if (text.trim().startsWith('/')) {
+        // 2) / 开头命令（/查 /记 等）
+        groupPolicy = { allowedTypes: Object.entries(cfg.typeRules || {}).filter(([, r]) => r.mode !== 'off').map(([type]) => type) };
+      } else {
+        // 3) 无前缀自然发言且未匹配自由类型：忽略
+        console.log(`[bot] 群${gid} 消息未匹配触发规则，忽略`);
+        return;
       }
     }
 

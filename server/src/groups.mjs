@@ -48,6 +48,7 @@ export function saveGroupConfig({ groupId, name = '', enabled = true, typeRules 
     if (mode === 'prefix') {
       prefix = String(r.prefix || '').trim().replace(/^\/+/, '');
       if (!prefix) prefix = key === 'gallery' ? '图' : 'wiki';
+      prefix = '/' + prefix; // 前缀统一带 /（如 /wiki3、/图）
     }
     clean[key] = { mode, prefix };
   }
@@ -81,42 +82,51 @@ export function deleteGroupConfig(groupId) {
   return { deleted: gid, changed: r.changes };
 }
 
+// 规范化前缀：统一带一个前导 /（如 /wiki3、/图）；兼容旧的无 / 格式
 function normalizePrefix(p) {
-  return String(p || '').trim().replace(/^\/+/, '');
+  const s = String(p || '').trim();
+  if (!s) return '';
+  return '/' + s.replace(/^\/+/, '');
 }
 
-// 判断非命令消息能否在群里触发，返回 null 表示不允许，或 { allowedTypes, mode, query }
+// 判断消息能否在群里触发（前缀优先，再命令，再自由），返回 null 表示不允许，或 { allowedTypes, mode, query }
 export function matchGroupTrigger(cfg, text) {
   if (!cfg || !cfg.enabled) return null;
   const raw = String(text || '').trim();
-  if (!raw || raw.startsWith('/')) return null;
+  if (!raw) return null;
 
+  // 1) 前缀匹配：支持带 /（/wiki3）和不带 /（wiki3，兼容旧配置/旧输入）
   const prefixTypes = [];
   for (const [type, rule] of Object.entries(cfg.typeRules || {})) {
     if (rule?.mode === 'prefix') {
-      const p = normalizePrefix(rule.prefix);
-      if (p && (raw === p || raw.startsWith(p + ' ') || raw.startsWith(p + '　'))) {
-        prefixTypes.push(type);
-      }
+      const p = normalizePrefix(rule.prefix); // 如 /wiki3
+      const p2 = p.replace(/^\//, '');        // 如 wiki3
+      const hit = (p && (raw === p || raw.startsWith(p + ' ') || raw.startsWith(p + '　')))
+        || (p2 && (raw === p2 || raw.startsWith(p2 + ' ') || raw.startsWith(p2 + '　')));
+      if (hit) prefixTypes.push(type);
     }
   }
   if (prefixTypes.length) {
-    // 去掉最长的匹配前缀，保留问题正文
+    // 去掉最长的匹配前缀，保留问题正文（仅前缀本身时正文为空）
     let stripped = raw;
     for (const type of prefixTypes) {
       const p = normalizePrefix(cfg.typeRules[type]?.prefix);
-      if (raw.startsWith(p + ' ')) {
-        stripped = raw.slice(p.length).trim();
-        break;
+      const p2 = p.replace(/^\//, '');
+      for (const pp of [p, p2]) {
+        if (!pp) continue;
+        if (raw === pp) { stripped = ''; break; }
+        if (raw.startsWith(pp + ' ')) { stripped = raw.slice(pp.length).trim(); break; }
+        if (raw.startsWith(pp + '　')) { stripped = raw.slice(pp.length).trim(); break; }
       }
-      if (raw.startsWith(p + '　')) {
-        stripped = raw.slice(p.length).trim();
-        break;
-      }
+      if (stripped === '' || stripped !== raw) break;
     }
     return { allowedTypes: prefixTypes, mode: 'prefix', query: stripped };
   }
 
+  // 2) / 开头的消息：未匹配前缀 → 交给命令处理（/查 /记 等），不触发类型
+  if (raw.startsWith('/')) return null;
+
+  // 3) 自由类型
   const freeTypes = Object.entries(cfg.typeRules || {})
     .filter(([, rule]) => rule?.mode === 'free')
     .map(([type]) => type);

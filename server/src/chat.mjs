@@ -62,13 +62,14 @@ async function handleGalleryMessage(text, images, ctx) {
 
 export async function handleIncoming({ text, group_id, user_id, self_id, message_type, groupPolicy = null, groupCfg = null, images = [] }) {
   const t = String(text || '').trim();
-  if (!t) return { reply: '' };
 
-  // 图库：gallery 类型前缀触发消息（上传图片 / 查询）
-  if (groupPolicy?.allowedTypes?.includes('gallery')) {
+  // 图库：仅「前缀触发」的 gallery 消息（上传图片 / 查询）——命令/自由消息不拦截；无正文=查全部
+  if (groupPolicy?.mode === 'prefix' && groupPolicy?.allowedTypes?.includes('gallery')) {
     const galReply = await handleGalleryMessage(t, images, { group_id, user_id, message_type, groupPolicy });
     if (galReply) return { reply: galReply };
   }
+
+  if (!t) return { reply: '' };
 
   // 两位确认码：直接执行待确认的变更操作（增/改/删/改名）
   const pendingReply = consumePendingOp(user_id, t);

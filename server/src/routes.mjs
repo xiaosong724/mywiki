@@ -396,19 +396,20 @@ async function routeImpl(req, res) {
         groupCfg = cfg;
         // 未配置权限或已停用的群：机器人完全不可用（不响应任何消息）
         if (!cfg?.enabled) return sendJSON(res, 200, { reply: '' });
-        if (!effectiveText.trim().startsWith('/')) {
-          const trigger = matchGroupTrigger(cfg, effectiveText);
-          if (trigger) {
-            groupPolicy = { allowedTypes: trigger.allowedTypes, mode: trigger.mode };
-            effectiveText = trigger.query;
-          } else if (looksLikeConfirmation(effectiveText)) {
-            // 确认消息（两位码 / 确认XX）：受限群里放行，否则确认码无法执行
-            groupPolicy = { allowedTypes: Object.entries(cfg.typeRules || {}).filter(([, r]) => r.mode !== 'off').map(([type]) => type) };
-          } else {
-            return sendJSON(res, 200, { reply: '' });
-          }
-        } else {
+        // 1) 前缀触发优先（/wiki3、/图，兼容无 / 旧格式）
+        const trigger = matchGroupTrigger(cfg, effectiveText);
+        if (trigger) {
+          groupPolicy = { allowedTypes: trigger.allowedTypes, mode: trigger.mode };
+          effectiveText = trigger.query;
+        } else if (looksLikeConfirmation(effectiveText)) {
+          // 确认消息（两位码 / 确认XX）：受限群里放行，否则确认码无法执行
           groupPolicy = { allowedTypes: Object.entries(cfg.typeRules || {}).filter(([, r]) => r.mode !== 'off').map(([type]) => type) };
+        } else if (effectiveText.trim().startsWith('/')) {
+          // 2) / 开头命令（/查 /记 等）
+          groupPolicy = { allowedTypes: Object.entries(cfg.typeRules || {}).filter(([, r]) => r.mode !== 'off').map(([type]) => type) };
+        } else {
+          // 3) 无前缀自然发言且未匹配自由类型：忽略
+          return sendJSON(res, 200, { reply: '' });
         }
       }
       const { reply } = await handleIncoming({

@@ -518,7 +518,7 @@ async function openGroupForm(groupId = null) {
       <select class="group-mode">
         ${modeOpts}
       </select>
-      <input class="group-prefix" placeholder="前缀，如 wiki" value="${esc(r.prefix || '')}" ${r.mode === 'prefix' ? '' : 'disabled'}>
+      <input class="group-prefix" placeholder="前缀，如 /wiki3" value="${esc(r.prefix || '')}" ${r.mode === 'prefix' ? '' : 'disabled'}>
     </div>`;
   }).join('');
   const prefixInputs = () => box.querySelectorAll('.group-prefix');
