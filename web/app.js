@@ -503,14 +503,16 @@ async function openGroupForm(groupId = null) {
   const box = $('#gTypeRules');
   box.innerHTML = Object.entries(typeMap).map(([key, t]) => {
     const r = group?.typeRules?.[key] || {};
-    const isKb = kbSet.has(key);
-    const modeOpts = isKb
+    // 只能指令触发的类型：全量知识库（knowledge）+ 图库（gallery），不允许自由触发
+    const prefixOnly = kbSet.has(key) || key === 'gallery';
+    const modeOpts = prefixOnly
       ? `<option value="off" ${r.mode === 'off' ? 'selected' : ''}>关闭</option>
          <option value="prefix" ${r.mode === 'prefix' ? 'selected' : ''}>指令触发</option>`
       : `<option value="off" ${r.mode === 'off' ? 'selected' : ''}>关闭</option>
          <option value="free" ${r.mode === 'free' ? 'selected' : ''}>自由触发</option>
          <option value="prefix" ${r.mode === 'prefix' ? 'selected' : ''}>前缀触发</option>`;
-    const kbHint = isKb ? ' <span class="muted" style="font-size:12px">（全量知识库，只能指令触发）</span>' : '';
+    const kbHint = prefixOnly
+      ? ` <span class="muted" style="font-size:12px">（${key === 'gallery' ? '图库' : '全量知识库'}，只能指令触发）</span>` : '';
     return `<div class="group-type-row" data-type="${esc(key)}">
       <span class="group-type-label">${t.icon} ${esc(t.label)}${kbHint}</span>
       <select class="group-mode">
