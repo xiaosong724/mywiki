@@ -1,7 +1,7 @@
 ---
-name: wrap-up
-description: 会话收尾归档。用户说"收尾""整理归档""准备开新会话"或输入 /wrap-up 时使用：把本会话的成果/决策/状态变化全部落盘到 docs/（01 决策、02 看板、03 运维），并提示下一步。
-whenToUse: 用户要结束当前会话、换新会话、说"收尾"/"/wrap-up"时
+name: fg-wrap-up
+description: 会话收尾归档。用户说"fg收尾""fg整理归档""fg准备开新会话"或输入 /fg-wrap-up 时使用：把本会话的成果/决策/状态变化全部落盘到 docs/（01 决策、02 看板、03 运维），并提示下一步。
+whenToUse: 用户要结束当前会话、换新会话、说"fg收尾"/"/fg-wrap-up"时
 user-invocable: true
 ---
 

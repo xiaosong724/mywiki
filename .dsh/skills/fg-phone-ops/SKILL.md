@@ -1,7 +1,7 @@
 ---
-name: phone-ops
-description: 初始化「手机运维 / NapCat」新会话。用户说"手机运维新会话"/"继续装NapCat"或输入 /phone-ops 时使用：读取手机运维文档，报告当前状态与下一步，确认理解后再操作手机。
-whenToUse: 用户开启一个新的手机运维会话，或说"手机运维新会话"、"/phone-ops"、"继续装NapCat"
+name: fg-phone-ops
+description: 初始化「手机运维 / NapCat」新会话。用户说"fg手机运维新会话"/"fg继续装NapCat"或输入 /fg-phone-ops 时使用：读取手机运维文档，报告当前状态与下一步，确认理解后再操作手机。
+whenToUse: 用户开启一个新的手机运维会话，或说"fg手机运维新会话"、"/fg-phone-ops"、"fg继续装NapCat"
 user-invocable: true
 ---
 

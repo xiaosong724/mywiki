@@ -1,7 +1,7 @@
 ---
-name: wiki-dev
-description: 初始化「wiki 功能开发」新会话。用户说"wiki开发新会话"/"开始开发"或输入 /wiki-dev 时使用：读取项目文档中枢，报告当前进度与待办，确认理解后再开始工作。
-whenToUse: 用户开启一个新的 wiki 功能开发会话，或说"wiki开发新会话"、"/wiki-dev"
+name: fg-wiki-dev
+description: 初始化「wiki 功能开发」新会话。用户说"fg wiki开发新会话"/"fg开始开发"或输入 /fg-wiki-dev 时使用：读取项目文档中枢，报告当前进度与待办，确认理解后再开始工作。
+whenToUse: 用户开启一个新的 wiki 功能开发会话，或说"fg wiki开发新会话"、"/fg-wiki-dev"
 user-invocable: true
 ---
 

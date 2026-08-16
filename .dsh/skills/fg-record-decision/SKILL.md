@@ -1,7 +1,7 @@
 ---
-name: record-decision
-description: 记录决策/需求到 docs/01。用户说"记下这个决策""记录需求""写进决策日志"或输入 /record-decision 时使用：把本会话讨论出的结论按一行一条追加到决策日志，避免跨会话重复推理。
-whenToUse: 用户说"记下这个决策"、"记录需求"、"/record-decision"，或讨论明确出了结论需要落盘时
+name: fg-record-decision
+description: 记录决策/需求到 docs/01。用户说"fg记下这个决策""fg记录需求""fg写进决策日志"或输入 /fg-record-decision 时使用：把本会话讨论出的结论按一行一条追加到决策日志，避免跨会话重复推理。
+whenToUse: 用户说"fg记下这个决策"、"fg记录需求"、"/fg-record-decision"，或讨论明确出了结论需要落盘时
 user-invocable: true
 ---
 
