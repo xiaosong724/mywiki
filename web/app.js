@@ -85,6 +85,11 @@ async function renderDashboard() {
 
 async function renderList() {
   const type = state.type;
+  // 全量知识库类型：显示主 md + 动态 md（不做条目列表）
+  if (type) {
+    const kbSet = await kbTypeSet();
+    if (kbSet.has(type)) return renderKnowledgeView(type);
+  }
   const params = new URLSearchParams();
   if (type) params.set('type', type);
   if (state.q) params.set('q', state.q);
@@ -105,6 +110,125 @@ async function renderLogs() {
     (logs.length
       ? `<div class="grid">${logs.map((l) => `<div class="card"><h3>${esc(l.action)} · ${esc(l.summary)}</h3><div class="meta">${fmtTime(l.ts)} · ${esc(l.actor)}${l.entry_id ? ' · ' + esc(l.entry_id.slice(0, 8)) : ''}</div></div>`).join('')}</div>`
       : '<div class="empty">暂无日志</div>');
+}
+
+// ===== 全量知识库视图（文件型知识域：显示主 md + 动态 md，不做条目列表）=====
+let kbTypeCache = null;
+async function kbTypeSet() {
+  if (!kbTypeCache) {
+    const r = await api('/api/knowledge').catch(() => ({ types: [] }));
+    kbTypeCache = new Set(r.types.map((t) => t.type));
+  }
+  return kbTypeCache;
+}
+
+// 极简 markdown 渲染（仅支持本项目 md 使用的语法：标题/表格/列表/引用/粗体/行内代码）
+function mdToHtml(md) {
+  const inline = (s) => esc(s)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+  const lines = String(md || '').split('\n');
+  const out = [];
+  let listType = null;
+  const closeList = () => { if (listType) { out.push(`</${listType}>`); listType = null; } };
+  for (let i = 0; i < lines.length; i += 1) {
+    const t = lines[i].trim();
+    if (!t) { closeList(); continue; }
+    // 表格：当前行以 | 开头结尾，且下一行是 |---| 分隔
+    if (/^\|.*\|\s*$/.test(t) && /^\|/.test(t) && lines[i + 1] && /^\|[\s:|-]+\|\s*$/.test(lines[i + 1].trim()) && /^\|[\s:-]*---/.test(lines[i + 1].trim())) {
+      const header = t.split('|').slice(1, -1).map((s) => s.trim());
+      i += 1;
+      const rows = [];
+      while (i + 1 < lines.length && /^\|.*\|\s*$/.test(lines[i + 1].trim()) && /^\|/.test(lines[i + 1].trim())) {
+        i += 1;
+        rows.push(lines[i].split('|').slice(1, -1).map((s) => s.trim()));
+      }
+      out.push(`<table><thead><tr>${header.map((c) => `<th>${inline(c)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
+      continue;
+    }
+    const h = t.match(/^(#{1,5})\s+(.+)$/);
+    if (h) { closeList(); out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`); continue; }
+    if (/^>\s?/.test(t)) { closeList(); out.push(`<blockquote>${inline(t.replace(/^>\s?/, ''))}</blockquote>`); continue; }
+    const ul = t.match(/^[-*]\s+(.+)$/);
+    if (ul) {
+      if (listType !== 'ul') { closeList(); out.push('<ul>'); listType = 'ul'; }
+      out.push(`<li>${inline(ul[1])}</li>`); continue;
+    }
+    const ol = t.match(/^\d+[.、]\s+(.+)$/);
+    if (ol) {
+      if (listType !== 'ol') { closeList(); out.push('<ol>'); listType = 'ol'; }
+      out.push(`<li>${inline(ol[1])}</li>`); continue;
+    }
+    if (/^---+$/.test(t)) { closeList(); out.push('<hr>'); continue; }
+    closeList(); out.push(`<p>${inline(t)}</p>`);
+  }
+  closeList();
+  return out.join('\n');
+}
+
+async function renderKnowledgeView(type) {
+  const { knowledge } = await api(`/api/knowledge/${encodeURIComponent(type)}`);
+  const t = typeMeta(type);
+  const v = $('#view');
+  const verBtns = (knowledge.versions || []).map((vv) =>
+    `<button class="kb-rollback" data-version="${esc(vv.version)}" title="切回此版本（当前内容自动存档）">${esc(vv.version)}</button>`).join('');
+  v.innerHTML = `
+    <div class="section-title">${t.icon} ${esc(knowledge.label)} · 全量知识库（主文档 + 动态记录）</div>
+    <div class="card kb-manage">
+      <h3>📤 主文档更新</h3>
+      <div class="kb-upload">
+        <input type="file" id="kbMainFile" accept=".md,.markdown,.txt">
+        <button class="btn-primary" id="kbUploadBtn">上传并更新</button>
+      </div>
+      <div class="kb-hint">上传后旧版本自动保留（最多 5 个），可随时切换回旧版；动态记录文件在创建全量知识库时已自动生成（可为空）。</div>
+      <div class="kb-versions">历史版本：${verBtns || '<span class="muted">（暂无）</span>'}</div>
+    </div>
+    <div class="section-title">📖 主文档</div>
+    <div class="card kb-content">${mdToHtml(knowledge.main)}</div>
+    <div class="section-title">📝 动态记录（QQ 前缀指令写入 / 可编辑）<button class="btn-plain" id="kbDynamicEditBtn" style="margin-left:8px">✏️ 编辑</button></div>
+    <div class="card kb-content" id="kbDynamicView">${mdToHtml(knowledge.dynamic)}</div>
+    <div class="card" id="kbDynamicEdit" style="display:none">
+      <textarea id="kbDynamicText" rows="12" style="width:100%">${esc(knowledge.dynamic)}</textarea>
+      <div class="actions" style="margin-top:10px"><button class="btn-primary" id="kbDynamicSave">保存</button><button class="btn-plain" id="kbDynamicCancel">取消</button></div>
+    </div>`;
+  $('#kbUploadBtn').onclick = async () => {
+    const f = $('#kbMainFile').files[0];
+    if (!f) return toast('请先选择 md 文件');
+    if (f.size > 5 * 1024 * 1024) return toast('文件超过 5MB 限制');
+    const content = await f.text();
+    try {
+      await api(`/api/knowledge/${encodeURIComponent(type)}/main`, { method: 'POST', body: JSON.stringify({ content }) });
+      toast('主文档已更新（旧版本已保留）');
+      renderKnowledgeView(type);
+    } catch (err) { toast('更新失败：' + err.message); }
+  };
+  v.querySelectorAll('.kb-rollback').forEach((b) => {
+    b.onclick = async () => {
+      try {
+        const r = await api(`/api/knowledge/${encodeURIComponent(type)}/versions/${encodeURIComponent(b.dataset.version)}`);
+        $('#kbPreviewTitle').textContent = `版本 ${r.version.version} 预览（点击下方按钮切换）`;
+        $('#kbPreviewBody').innerHTML = mdToHtml(r.version.content);
+        $('#kbPreviewSwitch').dataset.version = b.dataset.version;
+        $('#kbPreviewModal').classList.remove('hidden');
+      } catch (err) { toast('预览失败：' + err.message); }
+    };
+  });
+  $('#kbDynamicEditBtn').onclick = () => {
+    $('#kbDynamicEdit').style.display = 'block';
+    $('#kbDynamicView').style.display = 'none';
+  };
+  $('#kbDynamicSave').onclick = async () => {
+    const content = $('#kbDynamicText').value;
+    try {
+      await api(`/api/knowledge/${encodeURIComponent(type)}/dynamic`, { method: 'PUT', body: JSON.stringify({ content }) });
+      toast('动态记录已保存');
+      renderKnowledgeView(type);
+    } catch (err) { toast('保存失败：' + err.message); }
+  };
+  $('#kbDynamicCancel').onclick = () => {
+    $('#kbDynamicEdit').style.display = 'none';
+    $('#kbDynamicView').style.display = '';
+  };
 }
 
 async function renderBackups() {
@@ -166,13 +290,13 @@ async function renderGroups() {
         </div>
       </div>`;
     }).join('')}</div>`
-    : '<div class="empty">还没有群组权限配置。未配置的群保持默认：全部类型自由触发。</div>';
+    : '<div class="empty">还没有群组权限配置。未配置权限的群不能使用 QQ 机器人（需要在 bot.allowedGroups 白名单且配置群权限）。</div>';
 
   v.innerHTML = `<div class="section-title">⚙️ 群组权限</div>
     <div class="actions" style="margin: 8px 0 16px;">
       <button type="button" class="btn-primary" id="groupAdd">添加群组</button>
     </div>
-    <div class="empty">说明：给某个 QQ 群单独设置可用的 wiki 类型和触发方式。未配置的群不受影响；停用（⛔）的群回到默认规则（受 bot.allowedGroups 白名单约束）。</div>
+    <div class="empty">说明：给某个 QQ 群单独设置可用的 wiki 类型和触发方式。<b>未配置权限或停用（⛔）的群，机器人完全不响应</b>；全量知识库类型（如修仙模组）只能指令触发，不能自由触发。</div>
     ${listHtml}`;
 
 }
@@ -189,21 +313,41 @@ async function openGroupForm(groupId = null) {
   $('#gGroupName').value = group?.name || '';
   $('#gEnabled').checked = group ? !!group.enabled : true;
   $('#gMemberPrivate').checked = group ? !!group.memberPrivateChat : true;
-  const typeResp = await api('/api/types');
+  const [typeResp, kbResp] = await Promise.all([
+    api('/api/types'),
+    api('/api/knowledge').catch(() => ({ types: [] })),
+  ]);
   const typeMap = typeResp?.types || state.types || {};
+  const kbSet = new Set((kbResp?.types || []).map((t) => t.type));
   const box = $('#gTypeRules');
   box.innerHTML = Object.entries(typeMap).map(([key, t]) => {
     const r = group?.typeRules?.[key] || {};
+    const isKb = kbSet.has(key);
+    const modeOpts = isKb
+      ? `<option value="off" ${r.mode === 'off' ? 'selected' : ''}>关闭</option>
+         <option value="prefix" ${r.mode === 'prefix' ? 'selected' : ''}>指令触发</option>`
+      : `<option value="off" ${r.mode === 'off' ? 'selected' : ''}>关闭</option>
+         <option value="free" ${r.mode === 'free' ? 'selected' : ''}>自由触发</option>
+         <option value="prefix" ${r.mode === 'prefix' ? 'selected' : ''}>前缀触发</option>`;
+    const kbHint = isKb ? ' <span class="muted" style="font-size:12px">（全量知识库，只能指令触发）</span>' : '';
     return `<div class="group-type-row" data-type="${esc(key)}">
-      <span class="group-type-label">${t.icon} ${esc(t.label)}</span>
+      <span class="group-type-label">${t.icon} ${esc(t.label)}${kbHint}</span>
       <select class="group-mode">
-        <option value="off" ${r.mode === 'off' ? 'selected' : ''}>关闭</option>
-        <option value="free" ${r.mode === 'free' ? 'selected' : ''}>自由触发</option>
-        <option value="prefix" ${r.mode === 'prefix' ? 'selected' : ''}>前缀触发</option>
+        ${modeOpts}
       </select>
       <input class="group-prefix" placeholder="前缀，如 wiki" value="${esc(r.prefix || '')}" ${r.mode === 'prefix' ? '' : 'disabled'}>
     </div>`;
   }).join('');
+  const prefixInputs = () => box.querySelectorAll('.group-prefix');
+  const sync = () => {
+    box.querySelectorAll('.group-type-row').forEach((row) => {
+      const sel = row.querySelector('.group-mode');
+      const inp = row.querySelector('.group-prefix');
+      inp.disabled = sel.value !== 'prefix';
+    });
+  };
+  box.querySelectorAll('.group-mode').forEach((sel) => sel.addEventListener('change', sync));
+  sync();
   box.querySelectorAll('.group-mode').forEach((sel) => {
     sel.onchange = () => {
       const row = sel.closest('.group-type-row');
@@ -829,6 +973,25 @@ $('#memberPermFormCancel').onclick = closeMemberPermModal;
 $('#memberPermModal').addEventListener('click', (e) => {
   if (e.target === $('#memberPermModal')) closeMemberPermModal();
 });
+
+// 全量知识库：版本预览 modal
+function closeKbPreview() { $('#kbPreviewModal').classList.add('hidden'); }
+$('#kbPreviewClose').onclick = closeKbPreview;
+$('#kbPreviewCancel').onclick = closeKbPreview;
+$('#kbPreviewModal').addEventListener('click', (e) => {
+  if (e.target === $('#kbPreviewModal')) closeKbPreview();
+});
+$('#kbPreviewSwitch').onclick = async () => {
+  const ver = $('#kbPreviewSwitch').dataset.version;
+  if (!ver) return;
+  try {
+    const type = state.type;
+    await api(`/api/knowledge/${encodeURIComponent(type)}/main/rollback`, { method: 'POST', body: JSON.stringify({ version: ver }) });
+    toast(`已切换回 ${ver}（当前内容已自动存档）`);
+    closeKbPreview();
+    renderKnowledgeView(type);
+  } catch (err) { toast('切换失败：' + err.message); }
+};
 
 document.addEventListener('submit', (e) => {
   if (e.target.id === 'groupForm') {

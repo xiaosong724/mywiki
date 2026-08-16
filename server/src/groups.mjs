@@ -1,6 +1,7 @@
 import { getDb } from './db.mjs';
 import { nowLocalISO } from './time.mjs';
 import { TYPES } from './types.mjs';
+import config from './config.mjs';
 
 const db = () => getDb();
 
@@ -39,8 +40,15 @@ export function saveGroupConfig({ groupId, name = '', enabled = true, typeRules 
   const clean = {};
   for (const key of Object.keys(TYPES)) {
     const r = typeRules[key] || {};
-    const mode = ['off', 'free', 'prefix'].includes(r.mode) ? r.mode : 'off';
-    const prefix = mode === 'prefix' ? String(r.prefix || '').trim().replace(/^\/+/, '') : '';
+    let mode = ['off', 'free', 'prefix'].includes(r.mode) ? r.mode : 'off';
+    // 全量知识库类型（配置了 knowledge.mainFile）只能指令触发（prefix）或关闭，不允许 free
+    const isKnowledgeType = !!(config.knowledge?.[key]?.mainFile);
+    if (isKnowledgeType && mode === 'free') mode = 'prefix';
+    let prefix = '';
+    if (mode === 'prefix') {
+      prefix = String(r.prefix || '').trim().replace(/^\/+/, '');
+      if (!prefix) prefix = 'wiki';
+    }
     clean[key] = { mode, prefix };
   }
   const cleanDefaults = {};

@@ -1,7 +1,6 @@
-import config from './config.mjs';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import config, { DATA_DIR, SERVER_DIR } from './config.mjs';
+import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { DATA_DIR } from './config.mjs';
 import {
   searchEntries, getEntry, resolveEntryId, createEntry, updateEntry, deleteEntry,
   maskEntry, entrySummary, getUpcoming, listEntries, ctxVisibility, getEntryVisible, canAccessEntry,
@@ -14,6 +13,56 @@ import { saveTypeLabel } from './type_labels.mjs';
 import { memberCan, isAdminUser } from './permissions.mjs';
 
 const histories = new Map();
+
+// ===== 文件型知识库（大知识域，双 md 方案）=====
+// 配置：config.knowledge[type] = { mainFile(主 md，用户整体更新), dynamicFile(动态 md，QQ 前缀指令记录) }
+// 查询时两个文件拼接注入 system 固定前缀：主 md 在前（稳定→缓存全命中），动态 md 在后（追加只裂末尾少量缓存）。
+function knowledgeConfigFor(groupPolicy) {
+  const types = groupPolicy?.allowedTypes || [];
+  const hit = types
+    .map((t) => ({ type: t, cfg: config.knowledge?.[t] }))
+    .find((h) => h.cfg && h.cfg.mainFile);
+  return hit || null;
+}
+
+export function knowledgeDynamicPath(type) {
+  const rel = config.knowledge?.[type]?.dynamicFile;
+  if (!rel) return null;
+  return path.isAbsolute(rel) ? rel : path.resolve(SERVER_DIR, rel);
+}
+
+function ensureDynamicFile(type) {
+  const dynPath = knowledgeDynamicPath(type);
+  if (!dynPath) return null;
+  mkdirSync(path.dirname(dynPath), { recursive: true });
+  if (!existsSync(dynPath)) {
+    const label = getType(type)?.label || type;
+    writeFileSync(dynPath, `# ${label} · QQ 动态记录\n\n> 通过前缀指令（如 wiki3）记录的内容，追加到本文件末尾，请保持 markdown 风格一致。\n`, 'utf-8');
+  }
+  return dynPath;
+}
+
+function loadKnowledgeText(type) {
+  const cfg = config.knowledge?.[type];
+  if (!cfg?.mainFile) return '';
+  const parts = [];
+  try {
+    const main = readFileSync(cfg.mainFile, 'utf-8');
+    if (main.trim()) parts.push(`【${getType(type)?.label || type}·主文档】\n${main}`);
+  } catch (err) {
+    console.error(`[ai] 主知识库读取失败 ${cfg.mainFile}`, err.message);
+  }
+  const dynPath = knowledgeDynamicPath(type);
+  if (dynPath && existsSync(dynPath)) {
+    try {
+      const dyn = readFileSync(dynPath, 'utf-8').trim();
+      if (dyn) parts.push(`【${getType(type)?.label || type}·QQ 动态记录（追加段，与主文档冲突时以动态记录为准）】\n${dyn}`);
+    } catch (err) {
+      console.error(`[ai] 动态知识库读取失败 ${dynPath}`, err.message);
+    }
+  }
+  return parts.join('\n\n');
+}
 
 // AI 变更确认注册表：user_id -> Map(code -> {kind, params, ctx, groupPolicy, expires})，10 分钟有效
 const pendingOps = new Map();
@@ -102,6 +151,34 @@ function executePendingOp(op) {
       if (!isAdminUser(ctx.user_id)) return '改分类名是管理操作，仅管理员可用，操作已取消。';
       const r = saveTypeLabel(op.params.typeKey, op.params.label);
       return `已把分类改名为「${r.label}」。`;
+    }
+    case 'append_knowledge': {
+      const p = op.params;
+      if (!isTypeAllowed(policy, p.type)) return '这个群没有开启该类型的记录权限，操作已取消。';
+      if (!memberCan(ctx.user_id, ctx.group_id, p.type, 'create')) return '你在本群没有该类型的记录权限，操作已取消。';
+      const dynPath = ensureDynamicFile(p.type);
+      if (!dynPath) return '该类型没有配置动态知识库文件，操作已取消。';
+      try {
+        appendFileSync(dynPath, `\n${p.content.trim()}\n`, 'utf-8');
+        return `已追加到修仙知识库动态记录 ✅\n${p.content.trim().slice(0, 300)}`;
+      } catch (err) {
+        return `写入知识库文件失败：${err.message}`;
+      }
+    }
+    case 'edit_knowledge': {
+      const p = op.params;
+      if (!isTypeAllowed(policy, p.type)) return '这个群没有开启该类型的修改权限，操作已取消。';
+      if (!memberCan(ctx.user_id, ctx.group_id, p.type, 'update')) return '你在本群没有该类型的修改权限，操作已取消。';
+      const dynPath = knowledgeDynamicPath(p.type);
+      if (!dynPath) return '该类型没有配置动态知识库文件，操作已取消。';
+      try {
+        const cur = readFileSync(dynPath, 'utf-8');
+        if (!cur.includes(p.oldText)) return '未在动态知识库中找到与 old_text 完全匹配的内容（可能已被修改），操作已取消。';
+        writeFileSync(dynPath, cur.replace(p.oldText, p.newText), 'utf-8');
+        return '已修改修仙知识库动态记录 ✅';
+      } catch (err) {
+        return `写入知识库文件失败：${err.message}`;
+      }
     }
     default:
       return '确认操作无效或已过期，请重新发起。';
@@ -398,6 +475,35 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'append_knowledge',
+      description: '把新内容追加到修仙模组知识库的动态记录文件末尾（记录新物品/新丹药/新指令等【新增】内容时用，追加到文件末尾对缓存最友好）。需要用户回复确认码后执行',
+      parameters: {
+        type: 'object',
+        properties: {
+          content: { type: 'string', description: '要追加的 markdown 文本，风格与知识库一致（表格或列表），包含小节标题行' },
+        },
+        required: ['content'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'edit_knowledge',
+      description: '修改修仙模组知识库动态记录中【已有】的段落（更新既有内容时用）。新增内容请用 append_knowledge。需要用户回复确认码后执行',
+      parameters: {
+        type: 'object',
+        properties: {
+          old_text: { type: 'string', description: '文件中要替换的原文片段，必须与文件内容完全一致（用于唯一定位）' },
+          new_text: { type: 'string', description: '替换后的新文本' },
+        },
+        required: ['old_text', 'new_text'],
+      },
+    },
+  },
 ];
 
 export function aiConfigured() {
@@ -444,7 +550,7 @@ function runTool(name, args, ctx, groupPolicy) {
         if (tagMatch) tagsFilter = tagMatch[1];
       }
       const kindFilter = args.kind ? String(args.kind) : '';
-      const limit = kindFilter === 'guide' ? 3 : 6;
+      const limit = kindFilter === 'guide' ? 3 : 10;
       let list = listEntries({
         q: q || undefined, limit,
         visibility: vis.visibility, owner: args.owner || undefined,
@@ -597,6 +703,25 @@ function runTool(name, args, ctx, groupPolicy) {
       if (!list.length) return '未来几天没有提醒';
       return list.map((e) => `#${e.id.slice(0, 8)} ${entrySummary(maskEntry(e))}`).join('\n');
     }
+    case 'append_knowledge': {
+      const kb = knowledgeConfigFor(groupPolicy);
+      if (!kb) return '当前触发的类型没有配置知识库文件，无法追加。';
+      if (!memberCan(ctx.user_id, ctx.group_id, kb.type, 'create')) return '你在本群没有该类型的记录权限';
+      const content = String(args.content || '').trim();
+      if (!content) return '内容不能为空，请提供要追加的 markdown 文本。';
+      const code = registerPendingOp(ctx.user_id, { kind: 'append_knowledge', params: { type: kb.type, content }, ctx, groupPolicy });
+      return `需要确认追加 #${code} 到修仙知识库动态记录：\n${content.slice(0, 200)}\n请用户回复：确认追加 ${code}`;
+    }
+    case 'edit_knowledge': {
+      const kb = knowledgeConfigFor(groupPolicy);
+      if (!kb) return '当前触发的类型没有配置知识库文件，无法修改。';
+      if (!memberCan(ctx.user_id, ctx.group_id, kb.type, 'update')) return '你在本群没有该类型的修改权限';
+      const oldText = String(args.old_text || '').trim();
+      const newText = String(args.new_text || '').trim();
+      if (!oldText || !newText) return 'old_text 和 new_text 都不能为空。';
+      const code = registerPendingOp(ctx.user_id, { kind: 'edit_knowledge', params: { type: kb.type, oldText, newText }, ctx, groupPolicy });
+      return `需要确认修改 #${code} 修仙知识库动态记录（原文：${oldText.slice(0, 100)}）。请用户回复：确认修改 ${code}`;
+    }
     default:
       return `未知工具: ${name}`;
   }
@@ -638,8 +763,18 @@ export async function aiChat(msg) {
       .join('；');
     userContent += `\n\n【本群可用类型】${labels}。只能在这些类型范围内搜索/记录/修改/删除。特别注意：修仙模组(minecraft_mod) 包含 丹药/丹方/药材/矿石/妖丹/妖兽/灵宠/境界/五行能力/指令/更新公告 等，用户记录或询问这些内容时属于修仙模组，可以正常处理。用户问的内容如果不属于这些类型，请直接回复“本群只能使用：<可用类型>，不能处理<用户请求的类型>”，不要提供其它类型的记录/查询建议，也不要调用工具操作其它类型。`;
   }
+  // 前缀触发的文件型知识库：全文注入 system 固定前缀（前缀稳定→缓存命中），AI 直接依据全文回答
+  const kb = msg.groupPolicy?.mode === 'prefix' ? knowledgeConfigFor(msg.groupPolicy) : null;
+  let systemContent = SYSTEM_PROMPT;
+  if (kb) {
+    const kbText = loadKnowledgeText(kb.type);
+    if (kbText) {
+      const label = getType(kb.type)?.label || kb.type;
+      systemContent += `\n\n【${label} 知识库全文（已提供，必读）】以下是${label}的完整知识库。回答该类型问题请直接依据此全文（动态记录段优先于主文档）。不要为${label}内容调用 search_knowledge（搜索工具只用于其他类型）。用户要求记录/修改该类型内容时：新增内容用 append_knowledge（追加到文件末尾，对缓存最友好），更新已有内容用 edit_knowledge；两者都需要用户回复确认码后才执行，不要声称已写入。\n${kbText}`;
+    }
+  }
   let msgs = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemContent },
     ...hist,
     { role: 'user', content: userContent },
   ];

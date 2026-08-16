@@ -49,5 +49,11 @@
         "outputPerMillion": 6
       }
     }
+  },
+  "knowledge": {
+    "minecraft_mod": {
+      "mainFile": "data/knowledge/minecraft_mod/main.md",
+      "dynamicFile": "data/knowledge/minecraft_mod/dynamic.md"
+    }
   }
 }

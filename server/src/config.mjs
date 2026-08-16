@@ -33,6 +33,7 @@ if (existsSync(activePath)) {
     notify: { ...defaults.notify, ...userCfg.notify },
     bot: { ...defaults.bot, ...userCfg.bot },
     ai: { ...defaults.ai, ...userCfg.ai },
+    knowledge: { ...defaults.knowledge, ...userCfg.knowledge },
   };
 } else {
   if (!configPathOverride) writeFileSync(activePath, JSON.stringify(defaults, null, 2), 'utf-8');

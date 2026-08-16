@@ -70,22 +70,25 @@ if (config.bot?.enabled) {
     let effectiveText = text;
     if (ev.message_type === 'group' && gid) {
       const cfg = groupCfg;
-      if (cfg?.enabled) {
-        if (!text.trim().startsWith('/')) {
-          const trigger = matchGroupTrigger(cfg, text);
-          if (trigger) {
-            groupPolicy = { allowedTypes: trigger.allowedTypes, mode: trigger.mode };
-            effectiveText = trigger.query;
-          } else if (looksLikeConfirmation(text)) {
-            // 确认消息（两位码 / 确认XX）：受限群里也必须放行，否则确认码永远无法执行
-            groupPolicy = { allowedTypes: Object.entries(cfg.typeRules || {}).filter(([, r]) => r.mode !== 'off').map(([type]) => type) };
-          } else {
-            console.log(`[bot] 群${gid} 消息未匹配触发规则，忽略`);
-            return;
-          }
-        } else {
+      // 未配置权限或已停用的群：机器人完全不可用（不响应任何消息）
+      if (!cfg?.enabled) {
+        console.log(`[bot] 群${gid} 未配置权限或已停用，忽略`);
+        return;
+      }
+      if (!text.trim().startsWith('/')) {
+        const trigger = matchGroupTrigger(cfg, text);
+        if (trigger) {
+          groupPolicy = { allowedTypes: trigger.allowedTypes, mode: trigger.mode };
+          effectiveText = trigger.query;
+        } else if (looksLikeConfirmation(text)) {
+          // 确认消息（两位码 / 确认XX）：受限群里也必须放行，否则确认码永远无法执行
           groupPolicy = { allowedTypes: Object.entries(cfg.typeRules || {}).filter(([, r]) => r.mode !== 'off').map(([type]) => type) };
+        } else {
+          console.log(`[bot] 群${gid} 消息未匹配触发规则，忽略`);
+          return;
         }
+      } else {
+        groupPolicy = { allowedTypes: Object.entries(cfg.typeRules || {}).filter(([, r]) => r.mode !== 'off').map(([type]) => type) };
       }
     }
 

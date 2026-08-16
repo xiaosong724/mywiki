@@ -63,7 +63,16 @@ export function listEntries({ type, q, tags, done, owner, visibility, kind, limi
   }
   let sql = 'SELECT * FROM entries';
   if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
-  sql += ' ORDER BY updated_at DESC LIMIT ? OFFSET ?';
+  if (q) {
+    // 搜索时标题匹配优先：标题命中关键词的词越多越靠前（避免精确命中被 updated_at 倒序 + limit 截断挤掉）
+    const tokens = String(q).trim().split(/\s+|[,，、]/).filter(Boolean);
+    const score = tokens.map(() => '(CASE WHEN title LIKE ? THEN 1 ELSE 0 END)').join(' + ');
+    for (const t of tokens) args.push(`%${t}%`);
+    sql += ` ORDER BY (${score}) DESC, updated_at DESC`;
+  } else {
+    sql += ' ORDER BY updated_at DESC';
+  }
+  sql += ' LIMIT ? OFFSET ?';
   args.push(Number(limit), Number(offset));
   return db().prepare(sql).all(...args).map(rowToEntry);
 }

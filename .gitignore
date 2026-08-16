@@ -13,3 +13,6 @@ NapCat.Shell/
 *.log
 .DS_Store
 Thumbs.db
+
+# 手机运维临时脚本传输目录（PC httpserver 用）
+.tmp/

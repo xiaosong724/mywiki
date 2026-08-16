@@ -10,6 +10,7 @@ import {
 } from './entries.mjs';
 import { handleIncoming } from './chat.mjs';
 import { aiConfigured } from './ai.mjs';
+import { knowledgeTypes, getKnowledge, saveMain, rollbackMain, saveDynamic, getVersionContent } from './knowledge.mjs';
 import { registerIdentity, listIdentities } from './identities.mjs';
 import { listBackups, createBackup, deleteBackup } from './backup.mjs';
 import { listGroupConfigs, getGroupConfig, saveGroupConfig, deleteGroupConfig, matchGroupTrigger, looksLikeConfirmation } from './groups.mjs';
@@ -260,6 +261,45 @@ async function routeImpl(req, res) {
       return sendJSON(res, 200, await deleteBackup(name));
     }
 
+    // 全量知识库（文件型知识域）
+    if (req.method === 'GET' && p === '/api/knowledge') {
+      const types = knowledgeTypes();
+      const list = types.map((t) => {
+        const k = getKnowledge(t);
+        return { type: t, label: k.label, mainSize: k.main.length, dynamicSize: k.dynamic.length, versions: k.versions.length };
+      });
+      return sendJSON(res, 200, { types: list });
+    }
+    const kbVerMatch = p.match(/^\/api\/knowledge\/([^/]+)\/versions\/([^/]+)$/);
+    if (kbVerMatch && req.method === 'GET') {
+      const type = decodeURIComponent(kbVerMatch[1]);
+      const k = getKnowledge(type);
+      if (!k.isKnowledgeType) return sendJSON(res, 404, { error: '该类型不是全量知识库' });
+      return sendJSON(res, 200, { version: getVersionContent(type, kbVerMatch[2]) });
+    }
+    const kbMatch = p.match(/^\/api\/knowledge\/([^/]+)(?:\/(main|dynamic))?(?:\/(rollback))?$/);
+    if (kbMatch) {
+      const type = decodeURIComponent(kbMatch[1]);
+      const sub = kbMatch[2] || '';
+      const act = kbMatch[3] || '';
+      const k = getKnowledge(type);
+      if (!k.isKnowledgeType) return sendJSON(res, 404, { error: '该类型不是全量知识库' });
+      if (req.method === 'GET' && !sub) return sendJSON(res, 200, { knowledge: k });
+      if (req.method === 'POST' && sub === 'main' && !act) {
+        const body = await readBody(req);
+        return sendJSON(res, 200, { knowledge: saveMain(type, body.content || '') });
+      }
+      if (req.method === 'POST' && sub === 'main' && act === 'rollback') {
+        const body = await readBody(req);
+        return sendJSON(res, 200, { knowledge: rollbackMain(type, body.version) });
+      }
+      if (req.method === 'PUT' && sub === 'dynamic') {
+        const body = await readBody(req);
+        return sendJSON(res, 200, { dynamic: saveDynamic(type, body.content || '') });
+      }
+      return sendJSON(res, 405, { error: '不支持的操作' });
+    }
+
     // 创建条目
     if (req.method === 'POST' && p === '/api/entries') {
       const body = await readBody(req);
@@ -280,21 +320,21 @@ async function routeImpl(req, res) {
       if (body.message_type === 'group' && body.group_id) {
         const cfg = getGroupConfig(String(body.group_id));
         groupCfg = cfg;
-        if (cfg?.enabled) {
-          if (!effectiveText.trim().startsWith('/')) {
-            const trigger = matchGroupTrigger(cfg, effectiveText);
-            if (trigger) {
-              groupPolicy = { allowedTypes: trigger.allowedTypes, mode: trigger.mode };
-              effectiveText = trigger.query;
-            } else if (looksLikeConfirmation(effectiveText)) {
-              // 确认消息（两位码 / 确认XX）：受限群里放行，否则确认码无法执行
-              groupPolicy = { allowedTypes: Object.entries(cfg.typeRules || {}).filter(([, r]) => r.mode !== 'off').map(([type]) => type) };
-            } else {
-              return sendJSON(res, 200, { reply: '' });
-            }
-          } else {
+        // 未配置权限或已停用的群：机器人完全不可用（不响应任何消息）
+        if (!cfg?.enabled) return sendJSON(res, 200, { reply: '' });
+        if (!effectiveText.trim().startsWith('/')) {
+          const trigger = matchGroupTrigger(cfg, effectiveText);
+          if (trigger) {
+            groupPolicy = { allowedTypes: trigger.allowedTypes, mode: trigger.mode };
+            effectiveText = trigger.query;
+          } else if (looksLikeConfirmation(effectiveText)) {
+            // 确认消息（两位码 / 确认XX）：受限群里放行，否则确认码无法执行
             groupPolicy = { allowedTypes: Object.entries(cfg.typeRules || {}).filter(([, r]) => r.mode !== 'off').map(([type]) => type) };
+          } else {
+            return sendJSON(res, 200, { reply: '' });
           }
+        } else {
+          groupPolicy = { allowedTypes: Object.entries(cfg.typeRules || {}).filter(([, r]) => r.mode !== 'off').map(([type]) => type) };
         }
       }
       const { reply } = await handleIncoming({

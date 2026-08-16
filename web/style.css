@@ -214,3 +214,54 @@ form input, form select, form textarea {
   z-index: 200;
   font-size: 14px;
 }
+
+/* 全量知识库视图 */
+.kb-manage { cursor: default; }
+.kb-manage h3 { margin-bottom: 10px; }
+.kb-upload { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.kb-upload input[type="file"] { flex: 1; }
+.kb-hint { color: var(--muted); font-size: 12px; line-height: 1.7; margin-bottom: 10px; }
+.kb-versions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+.kb-versions button { padding: 4px 10px; font-size: 12px; }
+.kb-content { cursor: default; line-height: 1.75; font-size: 14px; }
+.kb-content h1, .kb-content h2, .kb-content h3, .kb-content h4, .kb-content h5 {
+  margin: 14px 0 8px; color: var(--text); line-height: 1.4;
+}
+.kb-content h1 { font-size: 20px; }
+.kb-content h2 { font-size: 18px; border-bottom: 1px solid var(--border); padding-bottom: 5px; }
+.kb-content h3 { font-size: 16px; }
+.kb-content h4 { font-size: 15px; }
+.kb-content p { margin: 6px 0; }
+.kb-content ul, .kb-content ol { margin: 6px 0 6px 22px; }
+.kb-content li { margin: 3px 0; }
+.kb-content blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 4px 12px;
+  margin: 8px 0;
+  color: var(--muted);
+  background: var(--panel2);
+  border-radius: 0 8px 8px 0;
+}
+.kb-content table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+.kb-content th, .kb-content td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  font-size: 13px;
+  text-align: left;
+  vertical-align: top;
+}
+.kb-content th { background: var(--panel2); color: var(--text); white-space: nowrap; }
+.kb-content tr:nth-child(even) td { background: rgba(255,255,255,.02); }
+.kb-content code { background: var(--panel2); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+.kb-content hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+.kb-content textarea {
+  width: 100%;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: Consolas, "Courier New", monospace;
+  line-height: 1.6;
+}
