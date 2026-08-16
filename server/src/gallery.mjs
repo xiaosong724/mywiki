@@ -67,7 +67,20 @@ export function countGallery({ q = '', owner = '' } = {}) {
 }
 
 export function getGallery(id) {
-  return rowToGallery(db().prepare('SELECT * FROM gallery WHERE id = ?').get(String(id)));
+  const full = resolveGalleryId(id);
+  return full ? rowToGallery(db().prepare('SELECT * FROM gallery WHERE id = ?').get(full)) : null;
+}
+
+// 短 id 前缀解析（指令里 #14923fdc 是完整 UUID 的前 8 位）
+export function resolveGalleryId(id) {
+  const s = String(id || '').trim();
+  if (!s) return null;
+  if (s.length >= 8) {
+    const r = db().prepare('SELECT id FROM gallery WHERE id = ?').get(s);
+    if (r) return r.id;
+  }
+  const r = db().prepare('SELECT id FROM gallery WHERE id LIKE ? ORDER BY created_at DESC LIMIT 1').get(`${s}%`);
+  return r ? r.id : null;
 }
 
 // 上传：data 为图片 Buffer；必须绑定身份 owner；大小 ≤ 200KB
@@ -91,27 +104,30 @@ export function createGallery({ owner, caption = '', data, mime = 'image/jpeg' }
 }
 
 export function updateGallery(id, { caption, owner } = {}) {
-  const cur = getGallery(id);
+  const full = resolveGalleryId(id);
+  const cur = full ? getGallery(full) : null;
   if (!cur) throw new Error('图片不存在');
   db().prepare('UPDATE gallery SET caption=?, owner=?, updated_at=? WHERE id=?')
     .run(
       caption !== undefined ? String(caption).trim() : cur.caption,
       owner !== undefined ? String(owner).trim() : cur.owner,
-      nowLocalISO(), id,
+      nowLocalISO(), full,
     );
-  return getGallery(id);
+  return getGallery(full);
 }
 
 export function deleteGallery(id) {
-  const cur = getGallery(id);
+  const full = resolveGalleryId(id);
+  const cur = full ? getGallery(full) : null;
   if (!cur) throw new Error('图片不存在');
   try { unlinkSync(path.join(GALLERY_DIR, cur.file)); } catch { /* 文件可能已不在 */ }
-  db().prepare('DELETE FROM gallery WHERE id = ?').run(id);
-  return { deleted: id };
+  db().prepare('DELETE FROM gallery WHERE id = ?').run(full);
+  return { deleted: full };
 }
 
 export function galleryFilePath(id) {
-  const cur = getGallery(id);
+  const full = resolveGalleryId(id);
+  const cur = full ? getGallery(full) : null;
   if (!cur) return null;
   return path.join(GALLERY_DIR, cur.file);
 }
