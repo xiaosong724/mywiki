@@ -7,7 +7,7 @@ import { runBackup } from './backup.mjs';
 import { OneBotClient, extractText } from './bot/onebot.mjs';
 import { handleIncoming } from './chat.mjs';
 import { aiConfigured, setCostReporter } from './ai.mjs';
-import { getGroupConfig, listGroupConfigs, matchGroupTrigger, looksLikeConfirmation } from './groups.mjs';
+import { getGroupConfig, matchGroupTrigger, looksLikeConfirmation } from './groups.mjs';
 
 initDb();
 
@@ -20,51 +20,25 @@ process.on('uncaughtException', (err) => {
 
 const server = http.createServer(routes);
 
-// 群成员角色缓存（60s）：避免每条私聊消息都打 OneBot 接口
-const roleCache = new Map();
-const ROLE_CACHE_TTL = 60 * 1000;
-async function cachedMemberRole(bot, gid, uid) {
-  const key = `${gid}:${uid}`;
-  const hit = roleCache.get(key);
-  if (hit && Date.now() - hit.ts < ROLE_CACHE_TTL) return hit.info;
-  const info = await bot.getMemberRole(gid, uid); // {found,role} | {found:false} | null(查询失败=未知)
-  if (info) roleCache.set(key, { info, ts: Date.now() });
-  return info;
-}
-
 let bot = null;
 if (config.bot?.enabled) {
   bot = new OneBotClient(config.bot);
   bot.onMessage = async (ev) => {
-    // 权限过滤：白名单为空 = 不限制
-    const gid = String(ev.group_id || '');
     const uid = String(ev.user_id || '');
-    const groupCfg = ev.message_type === 'group' && gid ? getGroupConfig(gid) : null;
+    // 私聊完全禁用：所有对话只能在群里进行（系统主动通知如费用报告私聊不受影响）
+    if (ev.message_type === 'private') {
+      console.log(`[bot] 私聊 ${uid} 消息忽略（私聊已禁用，对话只能在群里）`);
+      return;
+    }
+    const gid = String(ev.group_id || '');
+    const groupCfg = gid ? getGroupConfig(gid) : null;
     // 只有「已配置且启用」的群才走群配置；停用（enabled=false）的群按未配置处理，仍受白名单约束
     const groupConfigured = !!groupCfg && !!groupCfg.enabled;
-    if (ev.message_type === 'group' && !groupConfigured && config.bot.allowedGroups?.length && !config.bot.allowedGroups.includes(gid)) return;
-    if (ev.message_type === 'private' && config.bot.allowedUsers?.length && !config.bot.allowedUsers.includes(uid)) return;
+    if (!groupConfigured && config.bot.allowedGroups?.length && !config.bot.allowedGroups.includes(gid)) return;
 
     const text = extractText(ev.message);
     if (!text) return;
-    console.log(`[bot] ${ev.message_type === 'group' ? `群${gid}` : '私聊'} ${uid}: ${text.slice(0, 60)}`);
-
-    // 私聊拦截：只检查「禁成员私聊」的已启用群；群主始终豁免；查询失败按拒绝处理（fail-closed）
-    if (ev.message_type === 'private') {
-      const restricted = listGroupConfigs().filter((cfg) => cfg.enabled && cfg.memberPrivateChat === false);
-      for (const cfg of restricted) {
-        const info = await cachedMemberRole(bot, cfg.groupId, uid);
-        if (info === null) {
-          console.warn(`[bot] 私聊 ${uid} 查询群${cfg.groupId}成员身份失败，按拒绝处理`);
-          await bot.sendMessage({ message_type: 'private', id: uid, text: '暂时无法验证你的群成员身份，请稍后再试，或在群里使用。' });
-          return;
-        }
-        if (info.found && info.role !== 'owner') {
-          await bot.sendMessage({ message_type: 'private', id: uid, text: '本群成员未开启私聊权限，请在群里使用；群主不受限制。' });
-          return;
-        }
-      }
-    }
+    console.log(`[bot] 群${gid} ${uid}: ${text.slice(0, 60)}`);
 
     let groupPolicy = null;
     let effectiveText = text;

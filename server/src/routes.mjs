@@ -314,6 +314,10 @@ async function routeImpl(req, res) {
     // 机器人对话入口（NapCat 适配器转发到这里）
     if (req.method === 'POST' && p === '/api/chat') {
       const body = await readBody(req);
+      // 私聊完全禁用：所有对话只能在群里进行
+      if ((body.message_type || 'private') === 'private') {
+        return sendJSON(res, 200, { reply: '' });
+      }
       let groupPolicy = null;
       let groupCfg = null;
       let effectiveText = body.text || '';
