@@ -1,6 +1,7 @@
 // 全量知识库（文件型知识域）管理：主 md 上传/版本保留(5)/回滚 + 动态 md 读写
 // 目录结构：<dir>/main.md（当前主文档）、<dir>/versions/vN.md（历史版本，最多 5）、<dir>/dynamic.md（QQ 动态记录）
 import config, { SERVER_DIR } from './config.mjs';
+import { randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { getType } from './types.mjs';
@@ -198,4 +199,77 @@ export function searchKnowledge(q, limit = 8) {
     }
   }
   return out.slice(0, limit);
+}
+
+// ===== 动态记录（QQ 前缀指令增/删/改，带 #短id 定位）=====
+// 动态 md 里每条记录格式：### 📌 <标题>（#<id8>）\n<内容>\n
+const RECORD_RE = /^#{1,4}\s*📌?\s*(.+?)\s*（#([0-9a-f]{6,12})）\s*$/;
+
+function dynamicText(type) {
+  const dyn = knowledgeDynamicPath(type);
+  return dyn && existsSync(dyn) ? readFileSync(dyn, 'utf-8') : '';
+}
+
+// 按 id 定位记录块：返回 { start, end, title, content }（end 指向块后，含块）
+function findRecordBlock(text, id8) {
+  const lines = text.split('\n');
+  let idx = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    const m = lines[i].match(RECORD_RE);
+    if (m && m[2] === String(id8).toLowerCase()) { idx = i; break; }
+  }
+  if (idx < 0) return null;
+  let end = idx + 1;
+  while (end < lines.length && !/^#{1,4}\s/.test(lines[end]) && lines[end].trim() !== '') end += 1;
+  // 尾部空行归入块
+  while (end > idx + 1 && lines[end - 1].trim() === '') end -= 1;
+  return { start: idx, end, title: lines[idx].match(RECORD_RE)[1], content: lines.slice(idx + 1, end).join('\n').trim() };
+}
+
+function recordBlock(title, id8, content) {
+  return `### 📌 ${String(title || '').trim()}（#${id8}）\n${String(content || '').trim()}`;
+}
+
+// 增：向动态 md 末尾追加一条记录，返回 { id, title, content }
+export function appendKnowledgeRecord(type, title, content) {
+  const t = String(title || '').trim();
+  if (!t) throw new Error('标题不能为空');
+  const id8 = randomUUID().replace(/-/g, '').slice(0, 8);
+  ensureKnowledgeFiles(type);
+  const dyn = knowledgeDynamicPath(type);
+  if (!dyn) throw new Error('该类型没有配置动态知识库文件');
+  const cur = dynamicText(type);
+  const sep = cur.trim() ? '\n' : '';
+  const block = (cur.trim() ? '\n' : '') + recordBlock(t, id8, content) + '\n';
+  writeFileSync(dyn, cur + sep + block, 'utf-8');
+  return { id: id8, title: t, content: String(content || '').trim() };
+}
+
+// 改：按 id 定位替换（标题+内容），返回新记录
+export function editKnowledgeRecord(type, id8, { title, content } = {}) {
+  const dyn = knowledgeDynamicPath(type);
+  if (!dyn) throw new Error('该类型没有配置动态知识库文件');
+  const text = dynamicText(type);
+  const block = findRecordBlock(text, id8);
+  if (!block) throw new Error(`记录 #${id8} 不存在`);
+  const newTitle = title !== undefined && String(title).trim() ? String(title).trim() : block.title;
+  const newContent = content !== undefined ? String(content).trim() : block.content;
+  const lines = text.split('\n');
+  const replacement = recordBlock(newTitle, String(id8).toLowerCase(), newContent).split('\n');
+  lines.splice(block.start, block.end - block.start, ...replacement);
+  writeFileSync(dyn, lines.join('\n'), 'utf-8');
+  return { id: String(id8).toLowerCase(), title: newTitle, content: newContent };
+}
+
+// 删：按 id 删除记录块，返回 { id, title }
+export function deleteKnowledgeRecord(type, id8) {
+  const dyn = knowledgeDynamicPath(type);
+  if (!dyn) throw new Error('该类型没有配置动态知识库文件');
+  const text = dynamicText(type);
+  const block = findRecordBlock(text, id8);
+  if (!block) throw new Error(`记录 #${id8} 不存在`);
+  const lines = text.split('\n');
+  lines.splice(block.start, block.end - block.start);
+  writeFileSync(dyn, lines.join('\n'), 'utf-8');
+  return { id: String(id8).toLowerCase(), title: block.title };
 }

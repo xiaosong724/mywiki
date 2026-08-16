@@ -95,15 +95,14 @@ export function matchGroupTrigger(cfg, text) {
   const raw = String(text || '').trim();
   if (!raw) return null;
 
-  // 1) 前缀匹配：支持带 /（/wiki3）和不带 /（wiki3，兼容旧配置/旧输入）
+  // 1) 前缀匹配：严格带 /（如 /wiki3、/图库）
   const prefixTypes = [];
   for (const [type, rule] of Object.entries(cfg.typeRules || {})) {
     if (rule?.mode === 'prefix') {
       const p = normalizePrefix(rule.prefix); // 如 /wiki3
-      const p2 = p.replace(/^\//, '');        // 如 wiki3
-      const hit = (p && (raw === p || raw.startsWith(p + ' ') || raw.startsWith(p + '　')))
-        || (p2 && (raw === p2 || raw.startsWith(p2 + ' ') || raw.startsWith(p2 + '　')));
-      if (hit) prefixTypes.push(type);
+      if (p && (raw === p || raw.startsWith(p + ' ') || raw.startsWith(p + '　'))) {
+        prefixTypes.push(type);
+      }
     }
   }
   if (prefixTypes.length) {
@@ -111,14 +110,10 @@ export function matchGroupTrigger(cfg, text) {
     let stripped = raw;
     for (const type of prefixTypes) {
       const p = normalizePrefix(cfg.typeRules[type]?.prefix);
-      const p2 = p.replace(/^\//, '');
-      for (const pp of [p, p2]) {
-        if (!pp) continue;
-        if (raw === pp) { stripped = ''; break; }
-        if (raw.startsWith(pp + ' ')) { stripped = raw.slice(pp.length).trim(); break; }
-        if (raw.startsWith(pp + '　')) { stripped = raw.slice(pp.length).trim(); break; }
-      }
-      if (stripped === '' || stripped !== raw) break;
+      if (!p) continue;
+      if (raw === p) { stripped = ''; break; }
+      if (raw.startsWith(p + ' ')) { stripped = raw.slice(p.length).trim(); break; }
+      if (raw.startsWith(p + '　')) { stripped = raw.slice(p.length).trim(); break; }
     }
     return { allowedTypes: prefixTypes, mode: 'prefix', query: stripped };
   }
