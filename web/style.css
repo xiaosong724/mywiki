@@ -215,6 +215,27 @@ form input, form select, form textarea {
   font-size: 14px;
 }
 
+/* 搜索高亮 */
+mark {
+  background: #ffd54f;
+  color: #2b1e00;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+/* 知识库跳转定位：目标章节标题高亮 */
+.kb-content h2.kb-jump, .kb-content h3.kb-jump, .kb-content h4.kb-jump {
+  background: rgba(79, 140, 255, .25);
+  border-left: 4px solid var(--accent);
+  padding-left: 8px;
+  border-radius: 4px;
+  animation: kbJumpFlash 1.6s ease;
+}
+@keyframes kbJumpFlash {
+  0% { background: rgba(79, 140, 255, .5); }
+  100% { background: rgba(79, 140, 255, .15); }
+}
+
 /* 全量知识库视图 */
 .kb-manage { cursor: default; }
 .kb-manage h3 { margin-bottom: 10px; }

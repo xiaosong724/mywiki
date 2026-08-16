@@ -1,5 +1,24 @@
 const $ = (s) => document.querySelector(s);
-const state = { types: {}, identities: [], view: 'dashboard', type: '', q: '', editingId: null, editingGroup: '' };
+const state = { types: {}, identities: [], view: 'dashboard', type: '', q: '', editingId: null, editingGroup: '', kbJump: null, current: null };
+
+// ===== 视图状态持久化（刷新后保留当前分类/搜索）=====
+const VIEW_KEY = 'wiki-view-state';
+function saveViewState() {
+  try {
+    localStorage.setItem(VIEW_KEY, JSON.stringify({
+      view: state.view, type: state.type, q: state.q, current: state.current,
+    }));
+  } catch { /* localStorage 不可用时忽略 */ }
+}
+function loadViewState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(VIEW_KEY) || '{}');
+    if (s.view) state.view = s.view;
+    if (s.type) state.type = s.type;
+    if (s.q) { state.q = s.q; $('#searchInput').value = s.q; }
+    if (s.current) state.current = s.current;
+  } catch { /* 忽略损坏的状态 */ }
+}
 
 async function api(path, opts = {}) {
   const r = await fetch(path, {
@@ -17,6 +36,18 @@ function esc(s) {
   }[c]));
 }
 
+// ===== 搜索高亮 =====
+function escRegex(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function currentTerms() { return String(state.q || '').split(/\s+|[,，、]/).filter(Boolean); }
+function highlightText(text, terms) {
+  let s = esc(text);
+  for (const t of (terms || [])) {
+    if (!t) continue;
+    s = s.replace(new RegExp(escRegex(t), 'gi'), (m) => `<mark>${m}</mark>`);
+  }
+  return s;
+}
+
 function fmtTime(iso) {
   return iso ? String(iso).replace('T', ' ') : '';
 }
@@ -26,12 +57,13 @@ function typeMeta(type) {
 }
 
 function cardHtml(e, extraClass = '') {
-  // 全量知识库搜索结果（md 章节）：点击跳转到该类型页
+  // 全量知识库搜索结果（md 章节）：点击跳转到该类型页对应章节
   if (e.source === 'knowledge') {
-    return `<div class="card kb-hit" data-view="kb" data-kb-type="${esc(e.kbType)}">
-      <h3>📚 ${esc(e.title)}</h3>
-      <div class="meta">${esc(e.content || '')}</div>
-      <div class="meta" style="color:var(--accent)">↳ 查看全量知识库「${esc(e.kbLabel)}」完整内容</div>
+    const terms = currentTerms();
+    return `<div class="card kb-hit" data-view="kb" data-kb-type="${esc(e.kbType)}" data-kb-section="${esc(e.kbSection)}">
+      <h3>📚 ${highlightText(e.title, terms)}</h3>
+      <div class="meta">${highlightText(e.content || '', terms)}</div>
+      <div class="meta" style="color:var(--accent)">↳ 查看全量知识库「${esc(e.kbLabel)}」对应章节</div>
     </div>`;
   }
   const t = typeMeta(e.type);
@@ -39,13 +71,16 @@ function cardHtml(e, extraClass = '') {
   const remind = e.remindAt ? `<div>⏰ ${fmtTime(e.remindAt)}${e.recurrence === 'yearly' ? '（每年）' : ''}</div>` : '';
   const tags = (e.tags || []).map((x) => `<span class="tag">${esc(x)}</span>`).join('');
   const priv = e.isPrivate ? ' 🔒' : '';
+  const searchSummary = state.view === 'search' && e.content
+    ? `<div class="meta">${highlightText(e.content, currentTerms())}</div>` : '';
   return `<div class="card ${extraClass}" data-id="${esc(e.id)}" data-view="detail">
-    <h3>${t.icon} ${esc(e.title)}${priv}</h3>
+    <h3>${t.icon} ${highlightText(e.title, state.view === 'search' ? currentTerms() : null)}${priv}</h3>
     <div class="meta">
       <div>${esc(t.label)}${owner}${e.location ? ' · 📍 ' + esc(e.location) : ''}</div>
       ${remind}
       <div>${tags}</div>
     </div>
+    ${searchSummary}
   </div>`;
 }
 
@@ -131,10 +166,17 @@ async function kbTypeSet() {
 }
 
 // 极简 markdown 渲染（仅支持本项目 md 使用的语法：标题/表格/列表/引用/粗体/行内代码）
-function mdToHtml(md) {
-  const inline = (s) => esc(s)
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>');
+function mdToHtml(md, terms) {
+  const inline = (s) => {
+    let t = esc(s);
+    for (const term of (terms || [])) {
+      if (!term) continue;
+      t = t.replace(new RegExp(escRegex(term), 'gi'), (m) => `<mark>${m}</mark>`);
+    }
+    return t
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>');
+  };
   const lines = String(md || '').split('\n');
   const out = [];
   let listType = null;
@@ -178,6 +220,7 @@ async function renderKnowledgeView(type) {
   const { knowledge } = await api(`/api/knowledge/${encodeURIComponent(type)}`);
   const t = typeMeta(type);
   const v = $('#view');
+  const terms = currentTerms();
   const verBtns = (knowledge.versions || []).map((vv) =>
     `<button class="kb-rollback" data-version="${esc(vv.version)}" title="切回此版本（当前内容自动存档）">${esc(vv.version)}</button>`).join('');
   v.innerHTML = `
@@ -192,13 +235,29 @@ async function renderKnowledgeView(type) {
       <div class="kb-versions">历史版本：${verBtns || '<span class="muted">（暂无）</span>'}</div>
     </div>
     <div class="section-title">📖 主文档</div>
-    <div class="card kb-content">${mdToHtml(knowledge.main)}</div>
+    <div class="card kb-content" id="kbMainDoc">${mdToHtml(knowledge.main, terms)}</div>
     <div class="section-title">📝 动态记录（QQ 前缀指令写入 / 可编辑）<button class="btn-plain" id="kbDynamicEditBtn" style="margin-left:8px">✏️ 编辑</button></div>
-    <div class="card kb-content" id="kbDynamicView">${mdToHtml(knowledge.dynamic)}</div>
+    <div class="card kb-content" id="kbDynamicDoc">${mdToHtml(knowledge.dynamic, terms)}</div>
     <div class="card" id="kbDynamicEdit" style="display:none">
       <textarea id="kbDynamicText" rows="12" style="width:100%">${esc(knowledge.dynamic)}</textarea>
       <div class="actions" style="margin-top:10px"><button class="btn-primary" id="kbDynamicSave">保存</button><button class="btn-plain" id="kbDynamicCancel">取消</button></div>
     </div>`;
+  // 从搜索结果跳转：滚动到目标章节并高亮
+  if (state.kbJump) {
+    const target = state.kbJump.section;
+    state.kbJump = null;
+    requestAnimationFrame(() => {
+      const heads = v.querySelectorAll('#kbMainDoc h2, #kbMainDoc h3, #kbMainDoc h4, #kbDynamicDoc h2, #kbDynamicDoc h3, #kbDynamicDoc h4');
+      for (const h of heads) {
+        const text = h.textContent.trim();
+        if (text === target || text.includes(target) || target.includes(text)) {
+          h.classList.add('kb-jump');
+          h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        }
+      }
+    });
+  }
   $('#kbUploadBtn').onclick = async () => {
     const f = $('#kbMainFile').files[0];
     if (!f) return toast('请先选择 md 文件');
@@ -223,7 +282,7 @@ async function renderKnowledgeView(type) {
   });
   $('#kbDynamicEditBtn').onclick = () => {
     $('#kbDynamicEdit').style.display = 'block';
-    $('#kbDynamicView').style.display = 'none';
+    $('#kbDynamicDoc').style.display = 'none';
   };
   $('#kbDynamicSave').onclick = async () => {
     const content = $('#kbDynamicText').value;
@@ -235,7 +294,7 @@ async function renderKnowledgeView(type) {
   };
   $('#kbDynamicCancel').onclick = () => {
     $('#kbDynamicEdit').style.display = 'none';
-    $('#kbDynamicView').style.display = '';
+    $('#kbDynamicDoc').style.display = '';
   };
 }
 
@@ -706,7 +765,7 @@ async function renderDetail(id) {
     if (v === '' || v === null || v === undefined) continue;
     rows.push(`<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`);
   }
-  if (e.content) rows.push(`<tr><td>内容</td><td>${esc(e.content)}</td></tr>`);
+  if (e.content) rows.push(`<tr><td>内容</td><td>${highlightText(e.content, currentTerms())}</td></tr>`);
   if (e.location) rows.push(`<tr><td>位置</td><td>${esc(e.location)}</td></tr>`);
   if (e.owner) rows.push(`<tr><td>归属</td><td>${esc(e.owner)}</td></tr>`);
   if (e.isPrivate) rows.push(`<tr><td>私密</td><td>🔒 仅网页和归属人本人私聊可见</td></tr>`);
@@ -855,6 +914,7 @@ function toast(msg) {
 }
 
 async function renderView() {
+  saveViewState();
   renderNav();
   if (state.view === 'dashboard') return renderDashboard();
   if (state.view === 'logs') return renderLogs();
@@ -929,9 +989,8 @@ document.addEventListener('click', (e) => {
   }
   const kbCard = e.target.closest('[data-view="kb"]');
   if (kbCard) {
+    state.kbJump = { section: kbCard.dataset.kbSection };
     state.type = kbCard.dataset.kbType;
-    state.q = '';
-    $('#searchInput').value = '';
     state.view = `type:${state.type}`;
     renderView();
     return;
@@ -962,6 +1021,7 @@ $('#searchBtn').onclick = () => {
   const q = $('#searchInput').value.trim();
   if (!q) return;
   state.q = q;
+  state.type = '';   // 清空类型：任何视图搜索都进入搜索结果页（否则知识库类型页会吞掉搜索）
   state.view = 'search';
   renderView();
 };
@@ -1026,6 +1086,9 @@ setInterval(() => {
   if (state.view === 'dashboard') renderDashboard();
 }, 30000);
 
-loadTypes().then(renderView).catch((err) => {
+loadTypes().then(() => {
+  loadViewState();
+  renderView();
+}).catch((err) => {
   $('#view').innerHTML = `<div class="empty">加载失败：${esc(err.message)}</div>`;
 });
