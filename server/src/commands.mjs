@@ -44,24 +44,35 @@ function shortId(id) {
   return id ? id.slice(0, 8) : '';
 }
 
-function groupHelpText(cfg) {
+// 群帮助：只显示当前用户在该群有权限的类型与命令（管理命令仅管理员；内容命令按 free 类型权限动态）
+function groupHelpText(cfg, ctx = {}) {
   const lines = ['本群可用：'];
   let any = false;
+  const uid = ctx.user_id;
+  const gid = cfg.groupId;
+  const typeKeys = Object.keys(cfg.typeRules || {});
+  const can = (type, action) => memberCan(uid, gid, type, action);
+  // 内容命令只服务于自由触发（free）类型；prefix 类型用「/前缀 增/改/删」指令
+  const freeTypes = typeKeys.filter((t) => cfg.typeRules[t]?.mode === 'free');
+  const anyCan = (action) => freeTypes.some((t) => can(t, action));
   for (const [type, rule] of Object.entries(cfg.typeRules || {})) {
+    if (rule?.mode === 'off') continue;
     const t = getType(type);
-    if (rule?.mode === 'free') {
-      any = true;
-      lines.push(`${t?.icon || ''} ${t?.label || type}：直接问`);
-    } else if (rule?.mode === 'prefix') {
-      any = true;
-      lines.push(`${t?.icon || ''} ${t?.label || type}：发「${rule.prefix || 'wiki'} 问题」触发`);
-    }
+    if (!can(type, 'read')) continue; // 无读权限的类型完全隐形
+    any = true;
+    if (rule?.mode === 'free') lines.push(`${t?.icon || ''} ${t?.label || type}：直接问`);
+    else if (rule?.mode === 'prefix') lines.push(`${t?.icon || ''} ${t?.label || type}：发「${rule.prefix || '/wiki'} 问题」触发`);
   }
-  if (!any) lines.push('（本群没有开启任何类型）');
-  lines.push('常用命令：/帮助 /我是 /身份 /清空');
-  lines.push('查看权限：/权限');
-  lines.push('管理命令：/分类名 类型 新名称');
-  lines.push('内容命令：/记 /查 /详情 /改 /删 /提醒 /过期 /今天 /密码（仅私聊）');
+  if (!any) lines.push('（本群没有你可用的类型）');
+  lines.push('常用命令：/帮助 /我是 /身份 /清空 /权限');
+  if (isAdminUser(uid)) lines.push('管理命令：/分类名 类型 新名称');
+  const cmds = [];
+  if (anyCan('create')) cmds.push('/记');
+  if (anyCan('read')) cmds.push('/查', '/详情');
+  if (anyCan('update')) cmds.push('/改');
+  if (anyCan('delete')) cmds.push('/删');
+  if (freeTypes.some((t) => getType(t)?.reminder && can(t, 'read'))) cmds.push('/提醒', '/过期', '/今天');
+  if (cmds.length) lines.push('内容命令：' + cmds.join(' '));
   return lines.join('\n');
 }
 
@@ -139,7 +150,9 @@ export async function handleCommand(text, ctx = {}) {
     case '/help':
     case '/?':
       if (ctx.groupCfg?.enabled) {
-        return { handled: true, reply: groupHelpText(ctx.groupCfg) };
+        const help = groupHelpText(ctx.groupCfg, ctx);
+        // 附上指令说明卡片图片（静态资源，随 git 分发；NapCat 同机可访问）
+        return { handled: true, reply: `${help}\n\n[CQ:image,file=http://127.0.0.1:8000/assets/help-card.png]` };
       }
       return { handled: true, reply: HELP };
 
