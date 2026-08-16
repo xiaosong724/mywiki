@@ -13,6 +13,15 @@ export function extractText(message) {
   return '';
 }
 
+// 提取图片段：[{ file, url }]（用于图库上传）
+export function extractImages(message) {
+  if (!Array.isArray(message)) return [];
+  return message
+    .filter((s) => s.type === 'image')
+    .map((s) => ({ file: s.data?.file || '', url: s.data?.url || '' }))
+    .filter((i) => i.file || i.url);
+}
+
 export class OneBotClient {
   constructor(cfg) {
     this.cfg = cfg;

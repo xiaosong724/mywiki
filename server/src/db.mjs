@@ -75,6 +75,20 @@ export function initDb() {
       created_at  TEXT NOT NULL
     );
 
+    -- 图库：图片文件 + 元数据（上传必须绑定身份 owner）
+    CREATE TABLE IF NOT EXISTS gallery (
+      id         TEXT PRIMARY KEY,
+      owner      TEXT NOT NULL,
+      caption    TEXT NOT NULL DEFAULT '',
+      file       TEXT NOT NULL,
+      mime       TEXT NOT NULL DEFAULT 'image/jpeg',
+      size       INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_gallery_owner ON gallery(owner);
+    CREATE INDEX IF NOT EXISTS idx_gallery_created ON gallery(created_at DESC);
+
     CREATE TABLE IF NOT EXISTS event_log (
       id       INTEGER PRIMARY KEY AUTOINCREMENT,
       ts       TEXT NOT NULL,

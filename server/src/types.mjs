@@ -121,6 +121,14 @@ export const TYPES = {
       { key: 'section', label: '章节', kind: 'text' },
     ],
   },
+  gallery: {
+    label: '图库',
+    icon: '🖼️',
+    reminder: false,
+    fields: [
+      { key: 'caption', label: '文字介绍', kind: 'text' },
+    ],
+  },
 };
 
 // 命令里支持的中文类型别名
@@ -148,6 +156,9 @@ export const TYPE_ALIASES = {
   '帮助': 'help',
   '手册': 'help',
   '说明': 'help',
+  '图库': 'gallery',
+  '图片': 'gallery',
+  '照片': 'gallery',
 };
 
 export function resolveType(name) {

@@ -123,6 +123,26 @@
     </div>
   </div>
 
+  <div id="galEditModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <span>编辑图片</span>
+        <button class="close" id="galEditClose">×</button>
+      </div>
+      <input type="hidden" id="galEditId">
+      <label>文字介绍
+        <input id="galEditCaption" placeholder="介绍">
+      </label>
+      <label>归属
+        <select id="galEditOwner"></select>
+      </label>
+      <div class="modal-actions">
+        <button class="btn-plain" id="galEditCancel">取消</button>
+        <button class="btn-primary" id="galEditSave">保存</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/app.js"></script>
 </body>
 </html>

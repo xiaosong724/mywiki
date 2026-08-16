@@ -11,6 +11,10 @@ import {
 import { handleIncoming } from './chat.mjs';
 import { aiConfigured } from './ai.mjs';
 import { knowledgeTypes, getKnowledge, saveMain, rollbackMain, saveDynamic, getVersionContent, searchKnowledge } from './knowledge.mjs';
+import {
+  listGallery, countGallery, getGallery, createGallery, updateGallery, deleteGallery,
+  dataUrlToBuffer, readGalleryImage, GALLERY_MAX_SIZE,
+} from './gallery.mjs';
 import { registerIdentity, listIdentities } from './identities.mjs';
 import { listBackups, createBackup, deleteBackup } from './backup.mjs';
 import { listGroupConfigs, getGroupConfig, saveGroupConfig, deleteGroupConfig, matchGroupTrigger, looksLikeConfirmation } from './groups.mjs';
@@ -314,6 +318,58 @@ async function routeImpl(req, res) {
       return sendJSON(res, 405, { error: '不支持的操作' });
     }
 
+    // 图库
+    if (req.method === 'GET' && p === '/api/gallery') {
+      const q = url.searchParams.get('q') || '';
+      const owner = url.searchParams.get('owner') || '';
+      const offset = Number(url.searchParams.get('offset') || 0);
+      const limit = Math.min(Number(url.searchParams.get('limit') || 20), 50);
+      const images = listGallery({ q, owner, offset, limit });
+      const total = countGallery({ q, owner });
+      return sendJSON(res, 200, { images, total, hasMore: offset + images.length < total });
+    }
+    if (req.method === 'POST' && p === '/api/gallery') {
+      try {
+        const body = await readBody(req);
+        const { mime, data } = dataUrlToBuffer(body.dataUrl);
+        const img = createGallery({ owner: body.owner, caption: body.caption, data, mime });
+        return sendJSON(res, 201, { image: img });
+      } catch (err) {
+        return sendJSON(res, 400, { error: err.message });
+      }
+    }
+    if (req.method === 'PATCH' && p === '/api/gallery') {
+      return sendJSON(res, 405, { error: '缺少图片 id' });
+    }
+    const galleryMatch = p.match(/^\/api\/gallery\/([^/]+)(?:\/(image))?$/);
+    if (galleryMatch) {
+      const id = decodeURIComponent(galleryMatch[1]);
+      if (galleryMatch[2] === 'image') {
+        const buf = readGalleryImage(id);
+        const meta = getGallery(id);
+        if (!buf || !meta) return sendJSON(res, 404, { error: '图片不存在' });
+        res.writeHead(200, {
+          'Content-Type': meta.mime,
+          'Content-Length': buf.length,
+          'Cache-Control': 'public, max-age=86400',
+        });
+        res.end(buf);
+        return;
+      }
+      if (req.method === 'PATCH') {
+        try {
+          const body = await readBody(req);
+          return sendJSON(res, 200, { image: updateGallery(id, body) });
+        } catch (err) {
+          return sendJSON(res, 400, { error: err.message });
+        }
+      }
+      if (req.method === 'DELETE') {
+        return sendJSON(res, 200, deleteGallery(id));
+      }
+      return sendJSON(res, 405, { error: '不支持的操作' });
+    }
+
     // 创建条目
     if (req.method === 'POST' && p === '/api/entries') {
       const body = await readBody(req);
@@ -363,6 +419,7 @@ async function routeImpl(req, res) {
         message_type: body.message_type || 'private',
         groupPolicy,
         groupCfg,
+        images: Array.isArray(body.images) ? body.images : [],
       });
       return sendJSON(res, 200, { reply });
     }

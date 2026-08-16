@@ -4,7 +4,7 @@ import { initDb } from './db.mjs';
 import { routes } from './routes.mjs';
 import { startScheduler } from './reminders.mjs';
 import { runBackup } from './backup.mjs';
-import { OneBotClient, extractText } from './bot/onebot.mjs';
+import { OneBotClient, extractText, extractImages } from './bot/onebot.mjs';
 import { handleIncoming } from './chat.mjs';
 import { aiConfigured, setCostReporter } from './ai.mjs';
 import { getGroupConfig, matchGroupTrigger, looksLikeConfirmation } from './groups.mjs';
@@ -74,6 +74,7 @@ if (config.bot?.enabled) {
       message_type: ev.message_type,
       groupPolicy,
       groupCfg,
+      images: extractImages(ev.message),
     });
     if (reply) {
       const ok = await bot.sendMessage({

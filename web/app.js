@@ -133,6 +133,8 @@ async function renderList() {
     const kbSet = await kbTypeSet();
     if (kbSet.has(type)) return renderKnowledgeView(type);
   }
+  // 图库类型：图库管理页
+  if (type === 'gallery') return renderGalleryView();
   const params = new URLSearchParams();
   if (type) params.set('type', type);
   if (state.q) params.set('q', state.q);
@@ -296,6 +298,118 @@ async function renderKnowledgeView(type) {
     $('#kbDynamicEdit').style.display = 'none';
     $('#kbDynamicDoc').style.display = '';
   };
+}
+
+// ===== 图库（gallery）管理 =====
+// canvas 压缩图片到 ≤ maxSize（循环降质量/缩尺寸）
+function compressImage(file, maxSize) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let quality = 0.85;
+        let scale = 1;
+        const attempt = (n) => {
+          if (n > 12) return resolve(null); // 压缩失败交给后端拒绝
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          const bytes = Math.round(dataUrl.length * 3 / 4);
+          if (bytes <= maxSize) return resolve(dataUrl);
+          if (quality > 0.3) quality -= 0.15;
+          else { scale *= 0.7; quality = 0.7; }
+          attempt(n + 1);
+        };
+        attempt(0);
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function galleryImgHtml(g) {
+  return `<div class="card gal-card" data-gal-id="${esc(g.id)}" data-gal-caption="${esc(g.caption)}" data-gal-owner="${esc(g.owner)}">
+    <img src="${esc(g.url)}" alt="${esc(g.caption || g.owner)}" loading="lazy">
+    <h3>${esc(g.caption || '（无介绍）')}</h3>
+    <div class="meta">👤 ${esc(g.owner)} · ${(g.size / 1024).toFixed(0)}KB · ${fmtTime(g.createdAt)}</div>
+    <div class="actions">
+      <button class="btn-plain" data-gal-edit="${esc(g.id)}">✏️ 编辑</button>
+      <button class="btn-danger" data-gal-del="${esc(g.id)}">删除</button>
+    </div>
+  </div>`;
+}
+
+async function renderGalleryView() {
+  const v = $('#view');
+  const offset = state.galleryOffset || 0;
+  const [{ identities }, g] = await Promise.all([
+    api('/api/identities'),
+    api(`/api/gallery?offset=${offset}&limit=20`),
+  ]);
+  const ownerOpts = (identities || []).map((i) => `<option value="${esc(i.name)}">${esc(i.name)}</option>`).join('');
+  v.innerHTML = `
+    <div class="section-title">🖼️ 图库（单图 ≤200KB，网页上传自动压缩；必须绑定身份）</div>
+    <div class="card kb-manage">
+      <div class="kb-upload">
+        <input type="file" id="galFile" accept="image/*">
+        <input id="galCaption" placeholder="文字介绍（可选）" style="flex:1;min-width:140px">
+        <select id="galOwner"><option value="">归属（必选）</option>${ownerOpts}</select>
+        <button class="btn-primary" id="galUpload">上传</button>
+      </div>
+      <div class="kb-hint" id="galHint">提示：图片超过 200KB 会自动压缩（转 JPEG、降质量/缩尺寸）。</div>
+    </div>
+    <div class="section-title">共 ${g.total} 张</div>
+    <div class="grid">${(g.images || []).map(galleryImgHtml).join('') || '<div class="empty">还没有图片</div>'}</div>
+    <div class="actions" style="margin-top:12px">
+      <button id="galPrev" ${offset === 0 ? 'disabled' : ''}>← 上一页</button>
+      <button id="galNext" ${g.hasMore ? '' : 'disabled'}>下一页 →</button>
+    </div>`;
+  $('#galUpload').onclick = async () => {
+    const f = $('#galFile').files[0];
+    const caption = $('#galCaption').value.trim();
+    const owner = $('#galOwner').value;
+    if (!f) return toast('请先选择图片');
+    if (!owner) return toast('上传必须绑定身份：请选择归属');
+    $('#galHint').textContent = '压缩中…';
+    try {
+      const dataUrl = await compressImage(f, 200 * 1024);
+      if (!dataUrl) { $('#galHint').textContent = '压缩失败，请换一张更小的图。'; return; }
+      await api('/api/gallery', { method: 'POST', body: JSON.stringify({ owner, caption, dataUrl }) });
+      toast('上传成功');
+      state.galleryOffset = 0;
+      renderGalleryView();
+    } catch (err) { toast('上传失败：' + err.message); $('#galHint').textContent = ''; }
+  };
+  $('#galPrev').onclick = () => { state.galleryOffset = Math.max(0, offset - 20); renderGalleryView(); };
+  $('#galNext').onclick = () => { state.galleryOffset = offset + 20; renderGalleryView(); };
+  v.querySelectorAll('[data-gal-del]').forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm('确认删除这张图片？')) return;
+      try {
+        await api(`/api/gallery/${encodeURIComponent(b.dataset.galDel)}`, { method: 'DELETE' });
+        toast('已删除');
+        renderGalleryView();
+      } catch (err) { toast('删除失败：' + err.message); }
+    };
+  });
+  v.querySelectorAll('[data-gal-edit]').forEach((b) => {
+    b.onclick = () => {
+      const card = b.closest('.gal-card');
+      $('#galEditId').value = b.dataset.galEdit;
+      $('#galEditCaption').value = card.dataset.galCaption;
+      $('#galEditOwner').innerHTML = (identities || []).map((i) =>
+        `<option value="${esc(i.name)}" ${i.name === card.dataset.galOwner ? 'selected' : ''}>${esc(i.name)}</option>`).join('');
+      $('#galEditModal').classList.remove('hidden');
+    };
+  });
 }
 
 async function renderBackups() {
@@ -1052,8 +1166,7 @@ $('#memberPermModal').addEventListener('click', (e) => {
 });
 
 // 全量知识库：版本预览 modal
-function closeKbPreview() { $('#kbPreviewModal').classList.add('hidden'); }
-$('#kbPreviewClose').onclick = closeKbPreview;
+function closeKbPreview() { $('#kbPreviewModal').classList.add('hidden'); }$('#kbPreviewClose').onclick = closeKbPreview;
 $('#kbPreviewCancel').onclick = closeKbPreview;
 $('#kbPreviewModal').addEventListener('click', (e) => {
   if (e.target === $('#kbPreviewModal')) closeKbPreview();
@@ -1068,6 +1181,26 @@ $('#kbPreviewSwitch').onclick = async () => {
     closeKbPreview();
     renderKnowledgeView(type);
   } catch (err) { toast('切换失败：' + err.message); }
+};
+
+// 图库：编辑 modal
+function closeGalEdit() { $('#galEditModal').classList.add('hidden'); }
+$('#galEditClose').onclick = closeGalEdit;
+$('#galEditCancel').onclick = closeGalEdit;
+$('#galEditModal').addEventListener('click', (e) => {
+  if (e.target === $('#galEditModal')) closeGalEdit();
+});
+$('#galEditSave').onclick = async () => {
+  const id = $('#galEditId').value;
+  try {
+    await api(`/api/gallery/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ caption: $('#galEditCaption').value.trim(), owner: $('#galEditOwner').value }),
+    });
+    toast('已保存');
+    closeGalEdit();
+    renderGalleryView();
+  } catch (err) { toast('保存失败：' + err.message); }
 };
 
 document.addEventListener('submit', (e) => {

@@ -41,13 +41,13 @@ export function saveGroupConfig({ groupId, name = '', enabled = true, typeRules 
   for (const key of Object.keys(TYPES)) {
     const r = typeRules[key] || {};
     let mode = ['off', 'free', 'prefix'].includes(r.mode) ? r.mode : 'off';
-    // 全量知识库类型（配置了 knowledge.mainFile）只能指令触发（prefix）或关闭，不允许 free
-    const isKnowledgeType = !!(config.knowledge?.[key]?.mainFile);
+    // 全量知识库类型（配置了 knowledge.mainFile）和 图库(gallery) 只能指令触发（prefix）或关闭，不允许 free
+    const isKnowledgeType = !!(config.knowledge?.[key]?.mainFile) || key === 'gallery';
     if (isKnowledgeType && mode === 'free') mode = 'prefix';
     let prefix = '';
     if (mode === 'prefix') {
       prefix = String(r.prefix || '').trim().replace(/^\/+/, '');
-      if (!prefix) prefix = 'wiki';
+      if (!prefix) prefix = key === 'gallery' ? '图' : 'wiki';
     }
     clean[key] = { mode, prefix };
   }
