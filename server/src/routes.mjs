@@ -10,7 +10,7 @@ import {
 } from './entries.mjs';
 import { handleIncoming } from './chat.mjs';
 import { aiConfigured } from './ai.mjs';
-import { knowledgeTypes, getKnowledge, saveMain, rollbackMain, saveDynamic, getVersionContent } from './knowledge.mjs';
+import { knowledgeTypes, getKnowledge, saveMain, rollbackMain, saveDynamic, getVersionContent, searchKnowledge } from './knowledge.mjs';
 import { registerIdentity, listIdentities } from './identities.mjs';
 import { listBackups, createBackup, deleteBackup } from './backup.mjs';
 import { listGroupConfigs, getGroupConfig, saveGroupConfig, deleteGroupConfig, matchGroupTrigger, looksLikeConfirmation } from './groups.mjs';
@@ -231,7 +231,21 @@ async function routeImpl(req, res) {
         done: done === null ? undefined : done,
         limit, offset,
       });
-      return sendJSON(res, 200, { entries: list, total: list.length });
+      let merged = list;
+      if (q) {
+        // 全量知识库 md 章节并入搜索结果（权威源优先，排在 SQLite 结果前）
+        const kb = searchKnowledge(q, 6).map((h) => ({
+          source: 'knowledge',
+          kbType: h.type, kbLabel: h.label, kbSource: h.source, kbSection: h.section,
+          id: `kb:${h.type}:${h.source}:${h.section}`,
+          type: h.type,
+          title: `${h.section}（${h.label}${h.source === 'dynamic' ? '·动态' : ''}）`,
+          content: h.snippet,
+          payload: {}, tags: [], isPrivate: false,
+        }));
+        if (kb.length) merged = [...kb, ...list];
+      }
+      return sendJSON(res, 200, { entries: merged, total: merged.length });
     }
 
     // 到期 / 未来提醒

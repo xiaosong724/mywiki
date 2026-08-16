@@ -26,6 +26,14 @@ function typeMeta(type) {
 }
 
 function cardHtml(e, extraClass = '') {
+  // 全量知识库搜索结果（md 章节）：点击跳转到该类型页
+  if (e.source === 'knowledge') {
+    return `<div class="card kb-hit" data-view="kb" data-kb-type="${esc(e.kbType)}">
+      <h3>📚 ${esc(e.title)}</h3>
+      <div class="meta">${esc(e.content || '')}</div>
+      <div class="meta" style="color:var(--accent)">↳ 查看全量知识库「${esc(e.kbLabel)}」完整内容</div>
+    </div>`;
+  }
   const t = typeMeta(e.type);
   const owner = e.owner ? ` · 👤 ${esc(e.owner)}` : '';
   const remind = e.remindAt ? `<div>⏰ ${fmtTime(e.remindAt)}${e.recurrence === 'yearly' ? '（每年）' : ''}</div>` : '';
@@ -917,6 +925,15 @@ document.addEventListener('click', (e) => {
       console.error('[groups] open failed', err);
       toast('打开失败：' + err.message);
     });
+    return;
+  }
+  const kbCard = e.target.closest('[data-view="kb"]');
+  if (kbCard) {
+    state.type = kbCard.dataset.kbType;
+    state.q = '';
+    $('#searchInput').value = '';
+    state.view = `type:${state.type}`;
+    renderView();
     return;
   }
   const card = e.target.closest('[data-view="detail"]');

@@ -10,6 +10,7 @@ import { clearHistory, consumePendingOp } from './ai.mjs';
 import { isTypeAllowed } from './groups.mjs';
 import { saveTypeLabel } from './type_labels.mjs';
 import { memberCan, getMemberPermissions, listMemberPermissions, isAdminUser } from './permissions.mjs';
+import { searchKnowledge } from './knowledge.mjs';
 
 // 待确认删除：user_id -> Map<entry_id, { groupId, messageType }>
 // 记录发起时的会话场景，确认时必须同场景，防止跨群/私聊绕过权限
@@ -183,7 +184,14 @@ export async function handleCommand(text, ctx = {}) {
       const list = listEntries({ q, limit: 20, visibility: vis.visibility })
         .filter((e) => isTypeAllowed(ctx.groupPolicy, e.type) && memberCan(ctx.user_id, ctx.group_id, e.type, 'read'))
         .slice(0, 8);
-      return { handled: true, reply: `「${q}」结果：\n` + fmtList(list) };
+      // 全量知识库 md 章节并入（权威源优先）
+      const kbHits = searchKnowledge(q, 5)
+        .filter((h) => isTypeAllowed(ctx.groupPolicy, h.type))
+        .map((h) => `📚 [${h.label}${h.source === 'dynamic' ? '·动态' : ''}] ${h.section}\n  ${h.snippet}`);
+      const sqlLines = fmtList(list).split('\n');
+      // 有 md 命中时，不显示 SQLite 的"没找到。"
+      if (kbHits.length && sqlLines.length === 1 && sqlLines[0] === '没找到。') sqlLines.pop();
+      return { handled: true, reply: `「${q}」结果：\n` + [...kbHits, ...sqlLines].join('\n') };
     }
 
     case '/详情':

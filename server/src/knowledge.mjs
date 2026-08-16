@@ -140,3 +140,62 @@ export function saveDynamic(type, content) {
   writeFileSync(dyn, String(content ?? ''), 'utf-8');
   return readFileSync(dyn, 'utf-8');
 }
+
+// ===== 知识库 md 全文搜索（搜索结果合并用，权威源优先）=====
+function safeRead(p) {
+  if (!p || !existsSync(p)) return '';
+  try { return readFileSync(p, 'utf-8'); } catch { return ''; }
+}
+
+// 按 ## / ### 标题切分章节
+function splitSections(md) {
+  const lines = String(md || '').split('\n');
+  const sections = [];
+  let cur = null;
+  for (const line of lines) {
+    if (/^#{1,3} /.test(line)) {
+      if (cur) sections.push(cur);
+      cur = { title: line.replace(/^#+\s*/, '').trim(), body: [] };
+    } else if (cur) {
+      cur.body.push(line);
+    }
+  }
+  if (cur) sections.push(cur);
+  return sections.map((s) => ({ title: s.title, content: s.body.join('\n').trim() }));
+}
+
+function makeSnippet(content, keyword, len = 130) {
+  const i = content.toLowerCase().indexOf(String(keyword).toLowerCase());
+  if (i < 0) return content.slice(0, len).replace(/\s+/g, ' ');
+  const start = Math.max(0, i - 30);
+  return (start > 0 ? '…' : '') + content.slice(start, start + len).replace(/\s+/g, ' ');
+}
+
+// 在所有全量知识库类型的主 md + 动态 md 中搜索，返回匹配章节（多词 AND）
+export function searchKnowledge(q, limit = 8) {
+  const tokens = String(q || '').split(/\s+|[,，、]/).filter(Boolean);
+  if (!tokens.length) return [];
+  const out = [];
+  for (const type of knowledgeTypes()) {
+    const label = getType(type)?.label || type;
+    const sources = [
+      { source: 'main', text: safeRead(knowledgeMainPath(type)) },
+      { source: 'dynamic', text: safeRead(knowledgeDynamicPath(type)) },
+    ];
+    for (const { source, text } of sources) {
+      if (!text.trim()) continue;
+      for (const sec of splitSections(text)) {
+        const hay = (sec.title + '\n' + sec.content).toLowerCase();
+        if (tokens.every((t) => hay.includes(t.toLowerCase()))) {
+          out.push({
+            type, label, source,
+            section: sec.title,
+            content: sec.content.slice(0, 1000),
+            snippet: makeSnippet(sec.content, tokens[0]),
+          });
+        }
+      }
+    }
+  }
+  return out.slice(0, limit);
+}
